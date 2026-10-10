@@ -1,7 +1,8 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconBell, IconX } from '@/components/Icons';
+import { IconBell, IconX, IconBuilding } from '@/components/Icons';
+import { supabaseBrowser } from '@/lib/supabase/client';
 import { relative } from '@/components/ActivityItem';
 
 interface Note { id: number; created_at: string; subaccount_id: string; subaccount_name: string; contact_id: string; contact_name: string; channel: string; preview: string }
@@ -26,6 +27,9 @@ export default function NotificationCenter() {
   const [toast, setToast] = useState<Note | null>(null);
   const [push, setPush] = useState<PushState>('loading');
   const [pushBusy, setPushBusy] = useState(false);
+  const [settings, setSettings] = useState(false);
+  const [subs, setSubs] = useState<{ id: string; name: string }[] | null>(null);
+  const [muted, setMuted] = useState<string[]>([]);
   const newest = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -40,19 +44,25 @@ export default function NotificationCenter() {
         setTimeout(() => setToast((t) => (t && t.id === list[0].id ? null : t)), 7000);
       }
       newest.current = list[0]?.id ?? 0;
-      setItems(list); setReadAt(d.readAt); setUnread(d.unread);
+      setItems(list); setReadAt(d.readAt); setUnread(d.unread); setMuted(d.muted || []);
     } catch { /* offline: try again next tick */ }
   }, []);
 
-  // Poll, refresh on focus, and refresh when the service worker receives a push
+  // Instant refresh via Supabase Realtime (the server broadcasts a ping on each new message),
+  // plus a slow poll, refresh on focus, and refresh when the service worker receives a push
   useEffect(() => {
     load();
-    const t = setInterval(load, 20000);
+    const supabase = supabaseBrowser();
+    const channel = supabase.channel('nova-notifications').on('broadcast', { event: 'new' }, () => load()).subscribe();
+    const t = setInterval(load, 60000);
     const onFocus = () => load();
     const onSw = (e: MessageEvent) => { if (e.data?.type === 'nova-notification') load(); };
     window.addEventListener('focus', onFocus);
     navigator.serviceWorker?.addEventListener('message', onSw);
-    return () => { clearInterval(t); window.removeEventListener('focus', onFocus); navigator.serviceWorker?.removeEventListener('message', onSw); };
+    return () => {
+      clearInterval(t); supabase.removeChannel(channel);
+      window.removeEventListener('focus', onFocus); navigator.serviceWorker?.removeEventListener('message', onSw);
+    };
   }, [load]);
 
   // Register the service worker and work out the push state
@@ -111,6 +121,21 @@ export default function NotificationCenter() {
     }
   }
 
+  async function openSettings() {
+    setSettings((v) => !v);
+    if (!subs) {
+      const r = await fetch('/api/subaccounts').catch(() => null);
+      const d = r && r.ok ? await r.json() : { items: [] };
+      setSubs((d.items || []).map((x: { id: string; name: string }) => ({ id: x.id, name: x.name })));
+    }
+  }
+
+  async function toggleSub(id: string, enabled: boolean) {
+    setMuted((m) => (enabled ? m.filter((x) => x !== id) : [...m, id]));
+    const r = await fetch('/api/notifications/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subaccountId: id, enabled }) }).catch(() => null);
+    if (r && r.ok) { const d = await r.json(); setMuted(d.muted); load(); }
+  }
+
   function go(n: Note) {
     setOpen(false); setToast(null);
     router.push(`/leads?sa=${n.subaccount_id}&contact=${encodeURIComponent(n.contact_id)}`);
@@ -154,11 +179,40 @@ export default function NotificationCenter() {
       <aside aria-label="Notifications" aria-hidden={!open}
         className={`fixed inset-y-0 right-0 z-50 flex w-[min(100vw,400px)] flex-col border-l border-line bg-panel shadow-2xl transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
-          <h2 className="text-lg font-semibold">Notifications</h2>
-          <button onClick={() => setOpen(false)} aria-label="Close" className="flex size-9 items-center justify-center rounded-full hover:bg-card"><IconX size={18} /></button>
+          <h2 className="text-lg font-semibold">{settings ? 'Alert settings' : 'Notifications'}</h2>
+          <div className="flex items-center gap-1">
+            <button onClick={openSettings} aria-pressed={settings} className={`h-9 rounded-full px-3 text-sm ${settings ? 'bg-cyan/15 text-cyan' : 'text-muted hover:bg-card hover:text-fg'}`}>
+              {settings ? 'Done' : 'Settings'}
+            </button>
+            <button onClick={() => setOpen(false)} aria-label="Close" className="flex size-9 items-center justify-center rounded-full hover:bg-card"><IconX size={18} /></button>
+          </div>
         </div>
-        {pushBox[push] && <div className="border-b border-line bg-card/50 px-5 py-3 text-sm text-muted">{pushBox[push]}</div>}
-        <ul className="flex-1 overflow-y-auto p-3">
+        {settings && (
+          <div className="flex-1 overflow-y-auto p-5">
+            <p className="mb-3 text-sm text-muted">Choose which sub-accounts you get alerts for. This applies to the bell and to push notifications on all your devices.</p>
+            <ul className="space-y-2">
+              {subs === null && <li className="h-14 animate-pulse rounded-2xl bg-card" />}
+              {subs?.map((x) => {
+                const on = !muted.includes(x.id);
+                return (
+                  <li key={x.id}>
+                    <button onClick={() => toggleSub(x.id, !on)} role="switch" aria-checked={on}
+                      className="flex w-full items-center gap-3 rounded-2xl bg-card p-3.5 text-left hover:bg-card-2">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-cyan/12 text-cyan"><IconBuilding size={17} /></span>
+                      <span className="min-w-0 flex-1 truncate text-[15px]">{x.name}</span>
+                      <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${on ? 'bg-cyan' : 'bg-card-2'}`}>
+                        <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+              {subs && !subs.length && <li className="text-sm text-muted">No sub-accounts yet.</li>}
+            </ul>
+          </div>
+        )}
+        {!settings && pushBox[push] && <div className="border-b border-line bg-card/50 px-5 py-3 text-sm text-muted">{pushBox[push]}</div>}
+        <ul className={`flex-1 overflow-y-auto p-3 ${settings ? 'hidden' : ''}`}>
           {items.map((n) => (
             <li key={n.id}>
               <button onClick={() => go(n)} className="flex w-full gap-3 rounded-2xl p-3 text-left hover:bg-card">

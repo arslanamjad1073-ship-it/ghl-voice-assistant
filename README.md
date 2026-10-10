@@ -108,6 +108,14 @@ Edit it and send it through GHL (`POST /conversations/messages`).
 For each sub-account, create a GHL workflow: Trigger **Customer Replied** → Action **Webhook** (POST) to the URL shown under
 Sub-accounts › Message alerts (`/api/webhooks/ghl/<key>`). Each inbound message then shows in the bell panel and, for users who turned
 push on, as a phone/desktop notification. Tapping it opens the lead. On iPhone, add Nova to the Home Screen first (iOS 16.4+).
+- The bell updates instantly: the webhook sends a Supabase Realtime broadcast (topic `nova-notifications`, no message data in it),
+  open tabs then fetch the details through the API. A 60-second poll is the fallback.
+- Bell › Settings: each user picks which sub-accounts they get alerts for (bell and push), stored in `user_state.muted_subaccounts`.
+
+## Email fonts
+Web fonts (Poppins, Inter…) load in Apple Mail, iPhone and most Android apps. Gmail and Outlook cannot load them, so each sub-account
+picks a **fallback font** that those apps use (Outlook is forced to it, otherwise it would show Times New Roman). The branding preview
+has an *Apple Mail / phones* and a *Gmail / Outlook* view. Emails Nova sends by voice use the same branding and the caller's signature.
 
 ## Security notes
 - GHL tokens live only in Supabase. They're read with the service-role key on the server and never sent to the browser (the UI shows `••••abcd`).

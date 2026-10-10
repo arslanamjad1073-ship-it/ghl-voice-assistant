@@ -2,7 +2,7 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { IconBack, IconCheck } from '@/components/Icons';
-import { FONTS, defaultBranding, renderEmail, type EmailBranding } from '@/lib/emailTemplate';
+import { FONTS, SAFE_FONTS, defaultBranding, renderEmail, type EmailBranding } from '@/lib/emailTemplate';
 
 const input = 'h-11 w-full rounded-xl border border-line bg-card px-3.5 text-[14.5px] text-fg placeholder:text-faint outline-none transition focus:border-cyan focus:ring-3 focus:ring-cyan/20';
 
@@ -42,6 +42,7 @@ export default function BrandingPage({ params }: { params: Promise<{ id: string 
   const [saved, setSaved] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [view, setView] = useState<'apple' | 'gmail'>('apple');
 
   useEffect(() => {
     fetch('/api/subaccounts/' + id + '/branding').then((r) => r.json()).then((d) => {
@@ -51,7 +52,8 @@ export default function BrandingPage({ params }: { params: Promise<{ id: string 
   }, [id]);
 
   const set = <K extends keyof EmailBranding>(k: K, v: EmailBranding[K]) => { setB((x) => (x ? { ...x, [k]: v } : x)); setMsg(null); };
-  const html = useMemo(() => (b ? renderEmail(b, SAMPLE) : ''), [b]);
+  const html = useMemo(() => (b ? renderEmail(b, SAMPLE, { safeFontsOnly: view === 'gmail' }) : ''), [b, view]);
+  const isWebFont = !!(b && FONTS[b.fontFamily]?.google);
   const dirty = b && JSON.stringify(b) !== saved;
 
   async function save() {
@@ -124,7 +126,16 @@ export default function BrandingPage({ params }: { params: Promise<{ id: string 
                 <ColorField label="Page background" value={b.backgroundColor} onChange={(v) => set('backgroundColor', v)} />
                 <ColorField label="Email background" value={b.cardColor} onChange={(v) => set('cardColor', v)} />
               </div>
-              <p className="text-xs text-muted">Web fonts show in Apple Mail and most phones; Gmail and Outlook fall back to a similar standard font.</p>
+              {isWebFont && (
+                <Field label="Fallback font for Gmail & Outlook" hint="Gmail and Outlook can't load web fonts, so they use this one instead. Check it with the Gmail / Outlook preview.">
+                  <select value={b.fallbackFont} onChange={(e) => set('fallbackFont', e.target.value)} className={input}>
+                    {SAFE_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </Field>
+              )}
+              <p className="text-xs text-muted">{isWebFont
+                ? 'Web fonts show in Apple Mail, iPhone and most Android mail apps.'
+                : 'Standard fonts look the same in every email app.'}</p>
             </section>
 
             <section className="space-y-4 rounded-[24px] border border-line bg-panel p-5">
@@ -155,7 +166,12 @@ export default function BrandingPage({ params }: { params: Promise<{ id: string 
           <div className="lg:sticky lg:top-6 lg:self-start">
             <div className="mb-2 flex items-baseline justify-between">
               <h2 className="font-semibold">Live preview</h2>
-              <span className="text-xs text-muted">Sample email</span>
+              <div className="flex gap-1 rounded-full bg-card p-1 text-xs" role="tablist" aria-label="Preview as">
+                {([['apple', 'Apple Mail / phones'], ['gmail', 'Gmail / Outlook']] as const).map(([k, l]) => (
+                  <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
+                    className={`rounded-full px-3 py-1.5 ${view === k ? 'bg-cyan text-cyan-ink' : 'text-muted hover:text-fg'}`}>{l}</button>
+                ))}
+              </div>
             </div>
             <div className="overflow-hidden rounded-[24px] border border-line bg-white">
               <div className="border-b border-black/10 bg-[#f7f7f8] px-4 py-2.5 text-[13px] text-[#555]">

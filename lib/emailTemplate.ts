@@ -6,6 +6,7 @@ export interface EmailBranding {
   logoWidth: number;          // px
   align: 'left' | 'center';
   fontFamily: string;         // one of FONTS keys
+  fallbackFont: string;       // one of SAFE_FONTS: used by Gmail/Outlook when a web font is chosen
   fontSize: number;           // px
   textColor: string;
   accentColor: string;        // header bar, links
@@ -38,10 +39,13 @@ export const FONTS: Record<string, { stack: string; google?: string }> = {
   Montserrat: { stack: 'Montserrat, Arial, sans-serif', google: 'Montserrat:wght@400;600' }
 };
 
+// Fonts every email client has; Gmail and Outlook only render these
+export const SAFE_FONTS = ['Arial', 'Helvetica', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Georgia', 'Times New Roman'];
+
 export function defaultBranding(companyName = ''): EmailBranding {
   return {
     logoUrl: '', logoWidth: 140, align: 'left',
-    fontFamily: 'Arial', fontSize: 15,
+    fontFamily: 'Arial', fallbackFont: 'Arial', fontSize: 15,
     textColor: '#1f2937', accentColor: '#0a84ff', backgroundColor: '#f2f4f7', cardColor: '#ffffff',
     signature: 'Best regards,\n{{sender_name}}\n{{company}}',
     companyName, address: '', phone: '', website: '', footerNote: '',
@@ -63,6 +67,7 @@ export function normalizeBranding(input: unknown, companyName = ''): EmailBrandi
     logoWidth: Math.min(Math.max(Number(b.logoWidth) || d.logoWidth, 40), 400),
     align: b.align === 'center' ? 'center' : 'left',
     fontFamily: typeof b.fontFamily === 'string' && FONTS[b.fontFamily] ? b.fontFamily : d.fontFamily,
+    fallbackFont: typeof b.fallbackFont === 'string' && SAFE_FONTS.includes(b.fallbackFont) ? b.fallbackFont : d.fallbackFont,
     fontSize: Math.min(Math.max(Number(b.fontSize) || d.fontSize, 12), 22),
     textColor: color(b.textColor, d.textColor),
     accentColor: color(b.accentColor, d.accentColor),
@@ -106,9 +111,13 @@ export function fillTokens(text: string, b: EmailBranding, c: EmailContent) {
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 
-export function renderEmail(brandingInput: unknown, content: EmailContent): string {
+// opts.safeFontsOnly renders what Gmail/Outlook show (web font dropped, fallback used)
+export function renderEmail(brandingInput: unknown, content: EmailContent, opts: { safeFontsOnly?: boolean } = {}): string {
   const b = normalizeBranding(brandingInput);
-  const font = FONTS[b.fontFamily] || FONTS.Arial;
+  const chosen = FONTS[b.fontFamily] || FONTS.Arial;
+  const safe = FONTS[chosen.google ? b.fallbackFont : b.fontFamily] || FONTS.Arial;
+  // Web font first, then the chosen safe font, so every client lands on a font you picked
+  const font = opts.safeFontsOnly ? { stack: safe.stack } : { stack: chosen.google ? chosen.stack.split(',')[0] + ', ' + safe.stack : chosen.stack, google: chosen.google };
   const size = b.fontSize;
   const body = paragraphs(fillTokens(content.body, b, content), b.accentColor, size);
   const signature = b.signature ? paragraphs(fillTokens(b.signature, b, content), b.accentColor, size) : '';
@@ -136,6 +145,7 @@ export function renderEmail(brandingInput: unknown, content: EmailContent): stri
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(content.subject || '')}</title>
 ${font.google ? `<link href="https://fonts.googleapis.com/css2?family=${font.google}&display=swap" rel="stylesheet">` : ''}
+<!--[if mso]><style>body,table,td,p,a,span,div{font-family:${safe.stack} !important;}</style><![endif]-->
 </head>
 <body style="margin:0;padding:0;background:${b.backgroundColor}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${b.backgroundColor}">

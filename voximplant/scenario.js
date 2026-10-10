@@ -157,7 +157,9 @@ Rules:
   is unsure. Pass the chosen name as assignee. Confirm title, due day and assignee before creating it.
 - SMS and email: these go to a real customer, so be careful. Write the message from what the user said,
   read the FULL text back (and the subject for email), and only send after a clear yes.
-  Keep SMS short (under 300 characters). For email, write a short professional message with a subject.
+  Keep SMS short (under 300 characters). For email, write a short professional message with a subject.` +
+  (SESSION_TOKEN ? `
+  For email, do NOT end with a sign-off or your name: the company signature and branding are added automatically.` : '') + `
 - Read dates naturally, like "Tuesday the 6th at 3 PM", not raw timestamps. Read money naturally, like "two hundred fifty dollars".
 - When the user says yes to a change, call the tool IMMEDIATELY in that same turn. In the same breath say a short line
   first, like "Okay, creating the invoice now, one moment." Never go silent and never wait for the user to ask again.
@@ -772,7 +774,22 @@ const actions = {
     const text = String(message || '').trim();
     if (!text) return { ok: false, error: 'The email body is empty.' };
     const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = text.split(/\n{2,}/).map((para) => '<p>' + esc(para).replace(/\n/g, '<br>') + '</p>').join('');
+    let html = text.split(/\n{2,}/).map((para) => '<p>' + esc(para).replace(/\n/g, '<br>') + '</p>').join('');
+    // Web-app calls: use the sub-account's email branding + the caller's signature (falls back to plain HTML)
+    if (SESSION_TOKEN) {
+      try {
+        const first = (await nameOf(contact_id)).split(/\s+/)[0] || '';
+        const res = await Net.httpRequestAsync(APP_BASE_URL + '/api/scenario/render-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SCENARIO_SECRET },
+          postData: JSON.stringify({ token: SESSION_TOKEN, subject: subject, body: text, firstName: first }),
+          timeout: 8
+        });
+        const r = JSON.parse(res.text || '{}');
+        if (res.code === 200 && r.html) html = r.html;
+        else Logger.write('Branded email render -> ' + res.code);
+      } catch (e) { Logger.write('Branded email render failed: ' + e); }
+    }
     const d = await ghl('POST', '/conversations/messages', {
       type: 'Email', contactId: contact_id, subject: String(subject || 'Following up').trim(), html: html, message: text
     });

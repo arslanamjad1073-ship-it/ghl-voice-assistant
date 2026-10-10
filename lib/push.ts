@@ -13,13 +13,18 @@ function configure() {
   return true;
 }
 
-// Sends a push to every subscribed browser; drops subscriptions the browser has revoked
-export async function pushToAll(payload: { title: string; body: string; url: string; tag?: string }) {
+// Sends a push to every subscribed browser of users who have not muted this sub-account;
+// drops subscriptions the browser has revoked
+export async function pushToSubscribers(subaccountId: string, payload: { title: string; body: string; url: string; tag?: string }) {
   if (!configure()) return { sent: 0, skipped: 'VAPID keys not set' };
   const db = supabaseAdmin();
-  const { data } = await db.from('push_subscriptions').select('id,endpoint,p256dh,auth');
+  const [{ data: subs }, { data: muted }] = await Promise.all([
+    db.from('push_subscriptions').select('id,user_id,endpoint,p256dh,auth'),
+    db.from('user_state').select('user_id').contains('muted_subaccounts', [subaccountId])
+  ]);
+  const skip = new Set((muted || []).map((m) => m.user_id));
   let sent = 0;
-  await Promise.all((data || []).map(async (s) => {
+  await Promise.all((subs || []).filter((s) => !skip.has(s.user_id)).map(async (s) => {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 3600 });
       sent++;

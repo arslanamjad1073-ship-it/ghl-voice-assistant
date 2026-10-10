@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { ghl } from '@/lib/ghl';
-import { pushToAll } from '@/lib/push';
+import { pushToSubscribers } from '@/lib/push';
+import { broadcastRefresh } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,11 +59,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
   if (error?.code === '23505') return NextResponse.json({ ok: true, duplicate: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const push = await pushToAll({
+  const [push] = await Promise.all([pushToSubscribers(sa.id, {
     title: `${name} · ${channel}`,
     body: preview,
     url: `/leads?sa=${sa.id}&contact=${encodeURIComponent(contactId)}`,
     tag: 'msg-' + contactId
-  });
+  }), broadcastRefresh()]);
   return NextResponse.json({ ok: true, push });
 }
