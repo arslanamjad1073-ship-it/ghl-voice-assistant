@@ -25,6 +25,9 @@ const GEMINI_MODEL = MODEL_CHOICE === '31' ? 'gemini-3.1-flash-live-preview' : '
 const GEMINI_VOICE = 'Aoede';
 // Set to false to test plain conversation without CRM tools (helps isolate problems)
 const TOOLS_ENABLED = true;
+// 2.5 native audio: thinking makes the model sometimes emit a broken tool call ("<ctrl46>") instead of
+// running the tool. 0 turns thinking off. If Gemini ever rejects the setup because of it, set to null.
+const THINKING_BUDGET_25 = 0;
 
 // Used only for calls that arrive without a web-app session token (the old GHL widget)
 const LEGACY = {
@@ -143,7 +146,8 @@ Rules:
   4) due date (default 7 days from today if they say "standard"), 5) any note for the customer (optional),
   6) send by email, SMS, or both (or "don't send" to keep it as a draft).
   Then read back every item, the total, the due date and how it will be sent, and ask "Should I go ahead?".
-  Only then call create_invoice once with all items. Prices are in ${INVOICE_CURRENCY}.
+  Only then call create_invoice once with all items. Default currency is ${INVOICE_CURRENCY}; if the user names
+  another currency (for example PKR), pass it as currency (3-letter code).
 - Internal notifications: ask which team member (use list_users if unsure), what the message is, and whether by email, SMS, or both.
   If it is about a contact, include the contact_id. Read the message back before sending.
 - Notes: write the note in clean, complete sentences based on what the user said. Read it back briefly before saving.
@@ -155,7 +159,13 @@ Rules:
   read the FULL text back (and the subject for email), and only send after a clear yes.
   Keep SMS short (under 300 characters). For email, write a short professional message with a subject.
 - Read dates naturally, like "Tuesday the 6th at 3 PM", not raw timestamps. Read money naturally, like "two hundred fifty dollars".
-- After each action, say clearly whether it worked. If a tool returns an error, explain it simply.
+- When the user says yes to a change, call the tool IMMEDIATELY in that same turn. In the same breath say a short line
+  first, like "Okay, creating the invoice now, one moment." Never go silent and never wait for the user to ask again.
+- After every tool result, ALWAYS speak right away: say what happened using the "say" field of the result
+  (for example "Done. Invoice number 12 for PKR 2,000 was sent to Peter John by email and SMS."), then ask "Anything else?".
+- NEVER say something was created, sent, booked, updated or added unless you received a tool result with ok: true for it.
+  If you are not sure it happened, say so and call the tool. Do not guess.
+- If a tool returns an error, explain it simply and offer what to do next.
 - Ask "Anything else?" after each task. When the user is done, say goodbye and call hangup_call.
 Never invent contacts, tags, fields, stages, messages, appointments, calendars, or prices. Only use tool results and what the user said.`
   + '\nToday is ' + fmtTime(new Date().toISOString()) + ' (' + todayLocal() + ').';
@@ -217,7 +227,7 @@ const FUNCTION_DECLARATIONS = [
        contact_id: S,
        items: ARR(OBJ({ name: S, description: S, quantity: N, unit_price: N }, ['name', 'quantity', 'unit_price'])),
        due_date: S, title: S, notes: S,
-       send_via: E(['email', 'sms', 'both', 'none'])
+       send_via: E(['email', 'sms', 'both', 'none']), currency: S
      }, ['contact_id', 'items', 'due_date', 'send_via'])),
   fn('notify_team_member', 'Send an internal notification to a team member by email, SMS, or both. contact_id optional, if the notification is about a contact.',
      p({ user_name: S, message: S, channel: E(['email', 'sms', 'both']), contact_id: S }, ['user_name', 'message'])),
@@ -236,6 +246,7 @@ function buildConnectConfig() {
   };
   if (TOOLS_ENABLED) cfg.tools = [{ functionDeclarations: FUNCTION_DECLARATIONS }];
   if (IS31) cfg.thinkingConfig = { thinkingLevel: 'minimal' };
+  else if (THINKING_BUDGET_25 !== null) cfg.thinkingConfig = { thinkingBudget: THINKING_BUDGET_25 };
   return cfg;
 }
 
@@ -743,7 +754,8 @@ const actions = {
   },
 
   // ---------- invoices ----------
-  async create_invoice({ contact_id, items, due_date, title, notes, send_via }) {
+  async create_invoice({ contact_id, items, due_date, title, notes, send_via, currency }) {
+    const CUR = /^[A-Za-z]{3}$/.test(String(currency || '').trim()) ? String(currency).trim().toUpperCase() : INVOICE_CURRENCY;
     const list = (Array.isArray(items) ? items : []).map((it) => ({
       name: String(it.name || '').trim(),
       description: String(it.description || '').trim(),
@@ -779,9 +791,9 @@ const actions = {
       name: String(title || ('Invoice for ' + contactDetails.name)).trim(),
       title: 'INVOICE',
       businessDetails: businessDetails,
-      currency: INVOICE_CURRENCY,
+      currency: CUR,
       items: list.map((it) => {
-        const o = { name: it.name, currency: INVOICE_CURRENCY, amount: it.amount, qty: it.qty, type: 'one_time' };
+        const o = { name: it.name, currency: CUR, amount: it.amount, qty: it.qty, type: 'one_time' };
         if (it.description) o.description = it.description;
         return o;
       }),
@@ -799,7 +811,7 @@ const actions = {
     const invoiceId = inv._id || inv.id;
     const total = list.reduce((s, it) => s + it.amount * it.qty, 0);
     const result = { ok: true, invoice_id: invoiceId, invoice_number: inv.invoiceNumber || '', total: Math.round(total * 100) / 100,
-      currency: INVOICE_CURRENCY, due: due_date, status: 'draft' };
+      currency: CUR, due: due_date, status: 'draft' };
 
     if (via === 'none') return Object.assign(result, { note: 'Saved as a draft, not sent.' });
 
@@ -848,12 +860,12 @@ const actions = {
 // ---------------- Activity feed ----------------
 // For each CRM change: a short label (used for failures) and the success sentence.
 // Quoted parts ("...") are highlighted in the app.
-function fmtMoney(n) {
+function fmtMoney(n, cur) {
   const v = Math.round(Number(n) * 100) / 100;
   if (isNaN(v)) return String(n);
   const parts = v.toFixed(v % 1 ? 2 : 0).split('.');
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return INVOICE_CURRENCY + ' ' + parts.join('.');
+  return (cur || INVOICE_CURRENCY) + ' ' + parts.join('.');
 }
 const ACTIVITY = {
   add_tag: { label: 'Adding tag', ok: (a, o, who) => 'Tag "' + a.tag + '" added to contact "' + who + '"' },
@@ -884,17 +896,18 @@ const ACTIVITY = {
   send_sms: { label: 'Sending SMS', ok: (a, o, who) => 'SMS sent to "' + who + '"' },
   send_email: { label: 'Sending email', ok: (a, o, who) => 'Email "' + (o.subject || a.subject || '') + '" sent to "' + who + '"' },
   create_invoice: { label: 'Creating invoice', ok: (a, o, who) =>
-    'Invoice ' + (o.invoice_number ? '#' + o.invoice_number + ' ' : '') + 'for ' + fmtMoney(o.total) + ' ' +
+    'Invoice ' + (o.invoice_number ? '#' + o.invoice_number + ' ' : '') + 'for ' + fmtMoney(o.total, o.currency) + ' ' +
     (o.status === 'sent' ? 'sent to "' + who + '" by ' + (o.sent_via === 'both' ? 'email and SMS' : o.sent_via) : 'saved as a draft for "' + who + '"') },
   notify_team_member: { label: 'Notifying team member', ok: (a, o, who) =>
     'Team member "' + o.notified + '" notified by ' + (o.via === 'both' ? 'email and SMS' : o.via) + (who ? ' about "' + who + '"' : '') }
 };
 
-async function reportActivity(name, args, out) {
+// Builds the activity for a finished CRM action, or null when nothing happened (e.g. a follow-up question)
+async function buildActivity(name, args, out) {
   const spec = ACTIVITY[name];
-  if (!spec) return;
+  if (!spec) return null;
   const ok = !!out && out.ok !== false && !out.error;
-  if (!ok && out && out.need_choice) return; // just a follow-up question, nothing happened
+  if (!ok && out && out.need_choice) return null;
   const contactId = args.contact_id || (out && out.contact_id) || '';
   const who = contactId ? await nameOf(contactId) : '';
   let message;
@@ -903,9 +916,12 @@ async function reportActivity(name, args, out) {
   } catch (e) {
     message = spec.label + (ok ? ' done' : ' failed');
   }
-  const item = { action: name, status: ok ? 'success' : 'error', message: message, contact_name: who };
-  Logger.write('Activity: ' + message);
+  return { action: name, status: ok ? 'success' : 'error', message: message, contact_name: who, contact_id: contactId };
+}
 
+// Shows the activity in the app right away and saves it to the history
+async function deliverActivity(item, args, out) {
+  Logger.write('Activity: ' + item.message);
   try { if (activeCall) activeCall.sendMessage(JSON.stringify({ type: 'activity', item: item })); }
   catch (e) { Logger.write('Activity to app failed: ' + e); }
 
@@ -914,11 +930,16 @@ async function reportActivity(name, args, out) {
     const res = await Net.httpRequestAsync(APP_BASE_URL + '/api/scenario/activity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SCENARIO_SECRET },
-      postData: JSON.stringify(Object.assign({ token: SESSION_TOKEN, contact_id: contactId, details: { args: args, result: out } }, item)),
+      postData: JSON.stringify(Object.assign({ token: SESSION_TOKEN, details: { args: args, result: out } }, item)),
       timeout: 10
     });
     if (res.code !== 200) Logger.write('Activity save -> ' + res.code + ' ' + String(res.text || '').slice(0, 150));
   } catch (e) { Logger.write('Activity save failed: ' + e); }
+}
+
+// Tells the app Nova is busy with something (shown as "Creating invoice…")
+function sendWorking(label) {
+  try { if (activeCall) activeCall.sendMessage(JSON.stringify({ type: 'working', label: label || '' })); } catch (e) {}
 }
 
 // ---------------- Call handling ----------------
@@ -980,16 +1001,42 @@ VoxEngine.addEventListener(AppEvents.CallAlerting, async (ev) => {
       } catch (x) { Logger.write('Typed input failed: ' + x); }
     });
 
+    // Gemini 2.5 native audio sometimes emits a broken tool call ("<ctrl46>") and then goes silent.
+    // When a turn ends that way, tell it to make the call again instead of waiting for the user.
+    const sendText = (text) => {
+      if (IS31) client.sendRealtimeInput({ text: text });
+      else client.sendClientContent({ turns: [{ role: 'user', parts: [{ text: text }] }], turnComplete: true });
+    };
+    let turnBroken = false, turnHadTool = false, retries = 0;
+
     client.addEventListener(Gemini.LiveAPIEvents.ServerContent, (event) => {
       const payload = (event && event.data && event.data.payload) || {};
       if (payload.inputTranscription && payload.inputTranscription.text) Logger.write('USER: ' + payload.inputTranscription.text);
-      if (payload.outputTranscription && payload.outputTranscription.text) Logger.write('AGENT: ' + payload.outputTranscription.text);
+      const said = payload.outputTranscription && payload.outputTranscription.text;
+      if (said) {
+        if (/<ctrl\d+>/.test(said)) turnBroken = true;
+        else Logger.write('AGENT: ' + said);
+      }
       if (payload.interrupted) client.clearMediaBuffer();
+      if (payload.turnComplete) {
+        if (turnBroken && !turnHadTool && retries < 2) {
+          retries++;
+          Logger.write('Broken tool call detected, asking Gemini to retry (' + retries + ')');
+          try {
+            sendText('[SYSTEM] Your last tool call did not go through, nothing was done yet. The user already said yes. ' +
+              'Call the correct tool again right now with the same details. Do not ask the user again and do not say it is done until you get the result.');
+          } catch (e) { Logger.write('Retry nudge failed: ' + e); }
+        }
+        turnBroken = false; turnHadTool = false;
+      }
     });
 
     client.addEventListener(Gemini.LiveAPIEvents.ToolCall, async (event) => {
       const calls = (event && event.data && event.data.payload && event.data.payload.functionCalls) || [];
       if (!calls.length) return;
+      turnHadTool = true; retries = 0;
+      const busy = calls.find((c) => ACTIVITY[c.name]);
+      if (busy) sendWorking(ACTIVITY[busy.name].label);
 
       const done = [];
       const responses = await Promise.all(calls.map(async (fn) => {
@@ -1008,7 +1055,12 @@ VoxEngine.addEventListener(AppEvents.CallAlerting, async (ev) => {
         } else if (actions[name]) {
           try { output = await actions[name](args); }
           catch (err) { output = { ok: false, error: String(err.message || err) }; }
-          done.push({ name: name, args: args, output: output });
+          // Give Gemini the exact sentence to say, so it always announces the result
+          const item = await buildActivity(name, args, output).catch(() => null);
+          if (item) {
+            output = Object.assign({}, output, { say: item.status === 'success' ? 'Done. ' + item.message.replace(/"/g, '') + '.' : item.message.replace(/"/g, '') });
+            done.push({ item: item, args: args, output: output });
+          }
         } else {
           output = { ok: false, error: 'Unknown tool ' + name };
         }
@@ -1017,8 +1069,9 @@ VoxEngine.addEventListener(AppEvents.CallAlerting, async (ev) => {
       }));
 
       client.sendToolResponse({ functionResponses: responses });
-      // Report after answering Gemini, so the activity feed never delays the conversation
-      done.forEach((d) => reportActivity(d.name, d.args, d.output).catch((e) => Logger.write('Activity error: ' + e)));
+      if (busy) sendWorking('');
+      // Deliver after answering Gemini, so saving the history never delays the conversation
+      done.forEach((d) => deliverActivity(d.item, d.args, d.output).catch((e) => Logger.write('Activity error: ' + e)));
     });
 
     [Gemini.LiveAPIEvents.ToolCallCancellation, Gemini.LiveAPIEvents.ConnectorInformation].forEach((evName) =>

@@ -14,6 +14,7 @@ export interface CallHandlers {
   onActivity(item: Activity): void;
   onAsk(kind: AskKind, label: string): void;
   onReceived(value: string): void;
+  onWorking(label: string): void;
 }
 
 interface StartInfo { sessionToken: string; subaccountName: string; node: string; callNumber: string; usernames: string[] }
@@ -119,6 +120,8 @@ export class NovaCall {
       this.h.onActivity({ id: 'live-' + Date.now() + Math.random(), created_at: new Date().toISOString(), ...m.item });
     } else if (m.type === 'ask') {
       this.h.onAsk((['email', 'phone', 'text'].includes(m.kind) ? m.kind : 'text') as AskKind, m.label || '');
+    } else if (m.type === 'working') {
+      this.h.onWorking(String(m.label || ''));
     } else if (m.type === 'received') {
       this.h.onReceived(String(m.value || ''));
     }

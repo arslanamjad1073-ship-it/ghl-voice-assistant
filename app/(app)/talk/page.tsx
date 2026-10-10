@@ -29,6 +29,7 @@ export default function TalkPage() {
   const [ask, setAsk] = useState<{ kind: AskKind; label: string } | null>(null);
   const [value, setValue] = useState('');
   const [hint, setHint] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [working, setWorking] = useState('');
   const callRef = useRef<NovaCall | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -42,7 +43,7 @@ export default function TalkPage() {
   useEffect(() => { if (ask || typeOpen) inputRef.current?.focus(); }, [ask, typeOpen]);
 
   function reset() {
-    setMuted(false); setTypeOpen(false); setAsk(null); setValue(''); setHint(null);
+    setMuted(false); setTypeOpen(false); setAsk(null); setValue(''); setHint(null); setWorking('');
   }
 
   async function start() {
@@ -56,7 +57,8 @@ export default function TalkPage() {
         callRef.current = null; setPhase('idle'); reset();
         setStatus(reason === 'ended' ? 'Call ended. Tap the mic to talk again.' : 'Call ' + reason + '. Tap the mic to retry.');
       },
-      onActivity: (item) => setItems((list) => [item, ...list]),
+      onActivity: (item) => { setWorking(''); setItems((list) => [item, ...list]); },
+      onWorking: (label) => setWorking(label),
       onAsk: (kind, label) => { setAsk({ kind, label: label || ASK_LABEL[kind] }); setHint(null); },
       onReceived: (v) => setHint({ text: 'Nova received: ' + v })
     });
@@ -101,7 +103,7 @@ export default function TalkPage() {
     setValue(''); setAsk(null);
   }
 
-  const orbState: OrbState = phase === 'connecting' ? 'connecting' : phase === 'live' ? (muted ? 'muted' : 'live') : 'idle';
+  const orbState: OrbState = phase === 'connecting' || working ? 'connecting' : phase === 'live' ? (muted ? 'muted' : 'live') : 'idle';
   const showType = phase === 'live' && (typeOpen || !!ask);
   const kind = ask?.kind || 'text';
 
@@ -131,7 +133,7 @@ export default function TalkPage() {
           <div className="w-full">
             <div className="h-px w-2/3 bg-gradient-to-r from-line via-faint to-transparent" />
             <p aria-live="polite" className="px-2 py-5 text-center text-[17px] font-medium">
-              {status}{phase === 'idle' && status.startsWith('Hi,') && ' 👋'}
+              {working ? <span className="text-cyan">{working}…</span> : status}{!working && phase === 'idle' && status.startsWith('Hi,') && ' 👋'}
             </p>
             <div className="ml-auto h-px w-2/3 bg-gradient-to-l from-line via-faint to-transparent" />
           </div>
