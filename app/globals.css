@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Design tokens taken from the reference: charcoal surfaces, cyan accent, soft rounded cards */
+@theme {
+  --color-ink: #121314;        /* page */
+  --color-panel: #1c1d20;      /* app surface */
+  --color-card: #26272b;       /* cards, chips */
+  --color-card-2: #2e3035;     /* raised / hover */
+  --color-line: #34363c;       /* hairlines */
+  --color-fg: #f5f7fa;
+  --color-muted: #8b919c;
+  --color-faint: #5d636e;
+  --color-cyan: #5ad2f4;       /* primary accent */
+  --color-cyan-deep: #1aa7e0;
+  --color-cyan-ink: #08202b;   /* text on cyan */
+  --color-ok: #4ade80;
+  --color-bad: #f87171;
+  --font-sans: var(--font-exo), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html, body { background: var(--color-ink); color: var(--color-fg); }
+body { -webkit-font-smoothing: antialiased; }
+::selection { background: rgba(90, 210, 244, .35); }
+
+:focus-visible { outline: 2px solid var(--color-cyan); outline-offset: 2px; }
+
+/* Scrollbars that don't shout */
+* { scrollbar-width: thin; scrollbar-color: #3a3d44 transparent; }
+
+/* ---------- voice orb ---------- */
+.orb { position: relative; width: var(--orb, 260px); height: var(--orb, 260px); }
+.orb svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.orb .glow { position: absolute; inset: 14%; border-radius: 50%; background: radial-gradient(circle, rgba(90,210,244,.38) 0%, rgba(26,167,224,.12) 45%, transparent 70%); filter: blur(12px); transition: opacity .4s; opacity: .55; }
+.orb .swirl { transform-origin: 50% 50%; animation: orb-spin 14s linear infinite; }
+.orb .atom { transform-origin: 50% 50%; animation: orb-spin 40s linear infinite reverse; }
+.orb .core { transform-origin: 50% 50%; }
+.orb[data-state="live"] .glow { opacity: 1; animation: orb-breathe 2.4s ease-in-out infinite; }
+.orb[data-state="live"] .swirl { animation-duration: 3.6s; }
+.orb[data-state="live"] .atom { animation-duration: 9s; }
+.orb[data-state="live"] .core { animation: orb-pulse 1.6s ease-in-out infinite; }
+.orb[data-state="connecting"] .swirl { animation-duration: 1.6s; }
+.orb[data-state="muted"] { filter: saturate(.25) brightness(.8); }
+@keyframes orb-spin { to { transform: rotate(360deg); } }
+@keyframes orb-breathe { 0%,100% { transform: scale(.94); } 50% { transform: scale(1.08); } }
+@keyframes orb-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+
+.mic-ring[data-live="true"]::before {
+  content: ""; position: absolute; inset: -6px; border-radius: 9999px; border: 2px solid rgba(90,210,244,.5);
+  animation: ring 1.8s ease-out infinite;
+}
+@keyframes ring { from { transform: scale(.92); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
+
+.activity-in { animation: slide-in .35s ease-out; }
+@keyframes slide-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .orb .swirl, .orb .atom, .orb .core, .orb .glow, .mic-ring::before, .activity-in { animation: none !important; }
+}
