@@ -9,6 +9,7 @@ Browser (Next.js on Vercel)
   ├─ /login         Supabase email sign-in (password, magic link, sign-up)
   ├─ /              Home: greeting, Talk to Nova, sub-account picker, recent activity
   ├─ /talk          Call screen: orb, mic / mute, typed input, live "This call" feed
+  ├─ /leads         AI lead summary + Q&A about any contact's conversation (Gemini)
   ├─ /history       Every action with day, date and time, filters and search
   └─ /subaccounts   Add / edit / remove GHL sub-accounts (location ID, token, timezone…)
         │
@@ -16,6 +17,7 @@ Vercel API routes
   ├─ /api/call/start         creates a call session for the chosen sub-account
   ├─ /api/vox/hash           signs the Voximplant one-time login (password never reaches the browser)
   ├─ /api/activity           history for the UI
+  ├─ /api/leads/*            contact search, AI summary, questions about a conversation
   ├─ /api/subaccounts        sub-account CRUD (token verified against GHL on save)
   ├─ /api/scenario/session   ← scenario: loads the sub-account settings for a call
   └─ /api/scenario/activity  ← scenario: saves each completed action
@@ -62,6 +64,7 @@ In the Supabase dashboard:
 | `VOX_PASSWORD` | the Voximplant user's password |
 | `VOX_CALL_NUMBER` | `crm` |
 | `SCENARIO_SECRET` | output of `openssl rand -hex 32` |
+| `GEMINI_API_KEY` | same Gemini key as in Voximplant (used by the Leads page) |
 
 3. Deploy, then put the Vercel URL into Supabase (step 1).
 
@@ -81,6 +84,13 @@ In the Supabase dashboard:
 
    Name and timezone are filled from GHL when left blank. The token is verified with GHL before it's saved.
 3. Go back to **Home**, pick the sub-account and tap **Start talking**.
+
+## Leads page
+Pick a sub-account and a contact. The server loads **every** conversation thread for that contact (all pages of messages),
+converts times to the sub-account's timezone, and asks Gemini for a sectioned summary. Questions are answered from a fresh copy
+of the conversation each time; the follow-up history stays in the browser, so each team member has their own. It works for every
+sub-account added on the Sub-accounts page, using that sub-account's token (needs `conversations.readonly`,
+`conversations/message.readonly` and `contacts.readonly`).
 
 ## Security notes
 - GHL tokens live only in Supabase. They're read with the service-role key on the server and never sent to the browser (the UI shows `••••abcd`).

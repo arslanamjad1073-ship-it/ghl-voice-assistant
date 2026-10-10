@@ -18,6 +18,7 @@ export const IconMicOff = make(<><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 
 export const IconClock = make(<><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>);
 export const IconBuilding = make(<><path d="M4 21V6l8-3v18M12 9h8v12M8 8h.01M8 12h.01M8 16h.01M16 13h.01M16 17h.01M2 21h20" /></>);
 export const IconUser = make(<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>);
+export const IconUsers = make(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8" /></>);
 export const IconBack = make(<path d="M15 5l-7 7 7 7" />);
 export const IconX = make(<path d="M6 6l12 12M18 6 6 18" />);
 export const IconKeyboard = make(<><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M7.5 14h9" /></>);
