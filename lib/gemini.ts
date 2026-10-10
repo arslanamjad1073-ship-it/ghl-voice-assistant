@@ -1,6 +1,9 @@
 import 'server-only';
 
-const MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash';
+const MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash';
+
+// Gemini 2.x turns thinking off with a budget of 0; Gemini 3+ only takes a thinking level
+const thinkingConfig = (model: string) => (/^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' });
 
 export interface Turn { role: 'user' | 'model'; text: string }
 
@@ -17,7 +20,7 @@ export async function gemini(system: string, turns: Turn[], opts: { temperature?
         systemInstruction: { parts: [{ text: system }] },
         contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
         generationConfig: {
-          temperature: opts.temperature ?? 0.2, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 },
+          temperature: opts.temperature ?? 0.2, maxOutputTokens: 8192, thinkingConfig: thinkingConfig(MODEL),
           ...(opts.json ? { responseMimeType: 'application/json' } : {})
         }
       }),
@@ -26,7 +29,8 @@ export async function gemini(system: string, turns: Turn[], opts: { temperature?
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error('Gemini error ' + res.status + ': ' + (data?.error?.message || res.statusText));
-  const text = (data?.candidates?.[0]?.content?.parts || []).map((p: { text?: string }) => p.text || '').join('').trim();
+  const text = (data?.candidates?.[0]?.content?.parts || []).filter((p: { thought?: boolean }) => !p.thought)
+    .map((p: { text?: string }) => p.text || '').join('').trim();
   if (!text) throw new Error('Gemini returned no text' + (data?.candidates?.[0]?.finishReason ? ' (' + data.candidates[0].finishReason + ')' : ''));
   return text;
 }
