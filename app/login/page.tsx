@@ -43,6 +43,12 @@ function LoginForm() {
           email, password, options: { data: { full_name: name.trim() }, emailRedirectTo: redirectTo }
         });
         if (error) throw error;
+        // Supabase hides existing accounts: no error, no email, and an empty identities list
+        if (data.user && !data.user.identities?.length) {
+          setMode('magic');
+          setMsg({ text: 'This email already has an account. Sign in with your password, or send yourself a sign-in link below.', bad: true });
+          return;
+        }
         if (data.session) { router.replace('/'); router.refresh(); return; }
         setMsg({ text: 'Check your inbox and confirm your email to finish signing up.' });
       } else {
