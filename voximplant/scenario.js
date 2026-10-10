@@ -271,8 +271,16 @@ async function ghl(method, path, body, version) {
   try { data = JSON.parse(res.text || '{}'); } catch (e) {}
   Logger.write('GHL ' + method + ' ' + path + ' -> ' + res.code);
   if (res.code < 200 || res.code >= 300) {
-    const msg = data && data.message ? (Array.isArray(data.message) ? data.message.join('; ') : data.message) : (res.text || '').slice(0, 150);
-    throw new Error('GHL error ' + res.code + ': ' + msg);
+    const flat = (v) => (Array.isArray(v) ? v.map(flat).join('; ') : v && typeof v === 'object' ? JSON.stringify(v) : String(v || ''));
+    let msg = data && data.message ? flat(data.message) : '';
+    // Generic messages like "Unprocessable Entity Exception" hide the reason: add whatever else GHL returned
+    const extra = data && (data.errors || data.error || data.details || data.meta);
+    if (extra && typeof extra !== 'string') msg += (msg ? ' | ' : '') + flat(extra);
+    else if (typeof extra === 'string' && extra !== msg) msg += (msg ? ' | ' : '') + extra;
+    if (!msg) msg = (res.text || '').slice(0, 300);
+    Logger.write('GHL error body: ' + String(res.text || '').slice(0, 1500));
+    if (body) Logger.write('GHL request body: ' + JSON.stringify(body).slice(0, 1500));
+    throw new Error('GHL error ' + res.code + ': ' + msg.slice(0, 400));
   }
   return data;
 }
@@ -377,6 +385,24 @@ async function getCustomFields() {
   }
   return customFieldsCache;
 }
+// Removes empty strings, nulls and empty objects; GHL's validators reject "" for phone, URL and address fields
+function dropEmpty(v) {
+  if (Array.isArray(v)) return v.map(dropEmpty);
+  if (v && typeof v === 'object') {
+    const out = {};
+    Object.keys(v).forEach((k) => {
+      const x = dropEmpty(v[k]);
+      if (x === '' || x === null || x === undefined) return;
+      if (typeof x === 'object' && !Array.isArray(x) && !Object.keys(x).length) return;
+      out[k] = x;
+    });
+    return out;
+  }
+  return typeof v === 'string' ? v.trim() : v;
+}
+// GHL country codes are 2 letters; contacts sometimes store a full country name
+const countryCode = (c) => (/^[A-Za-z]{2}$/.test(String(c || '').trim()) ? String(c).trim().toUpperCase() : '');
+
 const cleanKey = (k) => norm(k).replace(/^contact\./, '').replace(/[_\-]+/g, ' ');
 
 let calendarsCache = null;
@@ -773,18 +799,15 @@ const actions = {
     if ((via === 'sms' || via === 'both') && !c.phone) return { ok: false, error: 'This contact has no phone number. Add one first or send by email.' };
     const loc = await getLocation();
 
-    const contactDetails = { id: c.id, name: contactName(c) || 'Customer', email: c.email || '', phoneNo: c.phone || '' };
-    if (c.companyName) contactDetails.companyName = c.companyName;
-    if (c.address1 || c.city) {
-      contactDetails.address = { addressLine1: c.address1 || '', city: c.city || '', state: c.state || '', countryCode: c.country || '', postalCode: c.postalCode || '' };
-    }
-    const businessDetails = {
-      name: loc.name || 'Our Business',
-      phoneNo: loc.phone || '',
-      address: [loc.address, loc.city, loc.state, loc.postalCode].filter(Boolean).join(', '),
-      website: loc.website || ''
+    const contactDetails = {
+      id: c.id, name: contactName(c) || 'Customer', email: c.email, phoneNo: c.phone, companyName: c.companyName,
+      address: { addressLine1: c.address1, city: c.city, state: c.state, countryCode: countryCode(c.country), postalCode: c.postalCode }
     };
-    if (loc.logoUrl) businessDetails.logoUrl = loc.logoUrl;
+    // address must be an object, not a string
+    const businessDetails = {
+      name: loc.name || 'Our Business', phoneNo: loc.phone, website: loc.website, logoUrl: loc.logoUrl,
+      address: { addressLine1: loc.address, city: loc.city, state: loc.state, countryCode: countryCode(loc.country), postalCode: loc.postalCode }
+    };
 
     const body = {
       altId: GHL_LOCATION_ID, altType: 'location',
@@ -806,7 +829,7 @@ const actions = {
     };
     if (notes) body.termsNotes = '<p>' + String(notes).replace(/</g, '&lt;') + '</p>';
 
-    const created = await ghl('POST', '/invoices/', body);
+    const created = await ghl('POST', '/invoices/', dropEmpty(body));
     const inv = created.invoice || created;
     const invoiceId = inv._id || inv.id;
     const total = list.reduce((s, it) => s + it.amount * it.qty, 0);
