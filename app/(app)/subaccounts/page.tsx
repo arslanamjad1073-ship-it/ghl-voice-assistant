@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useSubaccounts } from '@/lib/useSubaccounts';
 import type { SubaccountPublic } from '@/lib/types';
-import { IconBuilding, IconEdit, IconPlus, IconTrash, IconCheck } from '@/components/Icons';
+import { IconBuilding, IconEdit, IconPlus, IconTrash, IconCheck, IconMail, IconBell } from '@/components/Icons';
 
 const SCOPES = [
   'contacts.readonly', 'contacts.write', 'opportunities.readonly', 'opportunities.write',
@@ -36,6 +37,12 @@ export default function SubaccountsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [hookFor, setHookFor] = useState<string | null>(null);
+  const [copied, setCopied] = useState('');
+  const hookUrl = (key: string) => (typeof window !== 'undefined' ? window.location.origin : '') + '/api/webhooks/ghl/' + key;
+  async function copy(text: string) {
+    try { await navigator.clipboard.writeText(text); setCopied(text); setTimeout(() => setCopied(''), 2000); } catch { /* clipboard blocked */ }
+  }
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -186,6 +193,9 @@ export default function SubaccountsPage() {
                 {s.id !== sa.selected && (
                   <button onClick={() => sa.setSelected(s.id)} className="h-9 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">Use this one</button>
                 )}
+                <Link href={`/subaccounts/${s.id}/branding`} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconMail size={15} /> Email branding</Link>
+                <button onClick={() => setHookFor(hookFor === s.id ? null : s.id)} aria-expanded={hookFor === s.id}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconBell size={15} /> Message alerts</button>
                 {sa.canManage && (
                   <>
                     <button onClick={() => openEdit(s)} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconEdit size={15} /> Edit</button>
@@ -193,6 +203,23 @@ export default function SubaccountsPage() {
                   </>
                 )}
               </div>
+              {hookFor === s.id && (
+                <div className="mt-4 rounded-2xl bg-ink/60 p-4 text-sm">
+                  <p className="font-medium">Get notified when a contact messages</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
+                    <li>In this GHL sub-account open <b className="text-fg">Automation › Workflows</b> and create a workflow.</li>
+                    <li>Trigger: <b className="text-fg">Customer Replied</b> (any channel).</li>
+                    <li>Action: <b className="text-fg">Webhook</b>, method POST, URL below. Publish the workflow.</li>
+                  </ol>
+                  <div className="mt-3 flex gap-2">
+                    <code className="min-w-0 flex-1 truncate rounded-xl bg-card px-3 py-2.5 font-mono text-xs text-fg">{hookUrl(s.webhook_key)}</code>
+                    <button onClick={() => copy(hookUrl(s.webhook_key))} className="shrink-0 rounded-xl bg-cyan px-3.5 text-xs font-semibold text-cyan-ink">
+                      {copied === hookUrl(s.webhook_key) ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-faint">Then turn on push notifications from the bell at the top of the app.</p>
+                </div>
+              )}
             </div>
           </li>
         ))}

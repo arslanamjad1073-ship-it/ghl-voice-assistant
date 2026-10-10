@@ -25,6 +25,7 @@ export interface SubaccountPublic {
   invoice_sender_name: string | null;
   notify_webhook_url: string | null;
   token_hint: string;
+  webhook_key: string;
   created_at: string;
   updated_at: string;
 }

@@ -5,9 +5,9 @@ import { useSubaccounts } from '@/lib/useSubaccounts';
 import type { Activity } from '@/lib/types';
 import ActivityItem from '@/components/ActivityItem';
 import Orb from '@/components/Orb';
-import { IconLogout, IconMic, IconPlus } from '@/components/Icons';
+import { IconMic, IconPlus } from '@/components/Icons';
 
-export default function HomeView({ name, email }: { name: string; email: string }) {
+export default function HomeView({ name }: { name: string; email?: string }) {
   const sa = useSubaccounts();
   const [recent, setRecent] = useState<Activity[] | null>(null);
 
@@ -31,12 +31,6 @@ export default function HomeView({ name, email }: { name: string; email: string 
           </h1>
           <p className="mt-2 text-[15px] text-muted">Let&apos;s run your CRM by voice</p>
         </div>
-        <form action="/auth/signout" method="post">
-          <button title={'Sign out ' + email} aria-label="Sign out"
-            className="flex size-12 items-center justify-center rounded-full bg-card text-muted transition hover:bg-card-2 hover:text-fg">
-            <IconLogout size={20} />
-          </button>
-        </form>
       </header>
 
       <div className="mt-7 grid gap-8 lg:grid-cols-[1.1fr_1fr]">

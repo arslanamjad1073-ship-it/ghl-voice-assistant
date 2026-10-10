@@ -1,12 +1,18 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import FollowupComposer, { type Channel, type ChannelState, type Draft } from '@/components/FollowupComposer';
+import FollowupHistory from '@/components/FollowupHistory';
 import { useSubaccounts } from '@/lib/useSubaccounts';
 import { IconBack, IconSearch, IconSend, IconSparkle, IconChat, IconUser } from '@/components/Icons';
 
 interface Contact { id: string; name: string; email: string; phone: string; tags: string[]; company: string }
 interface Msg { at: string; when: string; day: string; who: 'Lead' | 'Team' | 'System'; channel: string; text: string }
-interface Detail { contact: Contact; summary: string; messages: Msg[]; messageCount: number; channels: string[]; note?: string }
+interface Detail {
+  contact: Contact; summary: string; messages: Msg[]; messageCount: number; channels: string[]; note?: string;
+  states: Record<Channel, ChannelState>; followup: Partial<Draft> | null; senderName: string;
+}
 interface QA { q: string; a?: string; error?: boolean }
 
 const field = 'h-12 w-full rounded-2xl border border-line bg-card px-4 text-[15px] text-fg placeholder:text-faint outline-none transition focus:border-cyan focus:ring-3 focus:ring-cyan/20';
@@ -45,7 +51,16 @@ function Summary({ text }: { text: string }) {
 }
 
 export default function LeadsPage() {
+  return <Suspense><Leads /></Suspense>;
+}
+
+function Leads() {
   const sa = useSubaccounts();
+  const params = useSearchParams();
+  const deepLink = useRef<{ sa: string; contact: string } | null>(
+    params.get('contact') ? { sa: params.get('sa') || '', contact: params.get('contact') || '' } : null
+  );
+  const [sentVersion, setSentVersion] = useState(0);
   const [q, setQ] = useState('');
   const [contacts, setContacts] = useState<Contact[] | null>(null);
   const [listError, setListError] = useState('');
@@ -74,8 +89,16 @@ export default function LeadsPage() {
     return () => clearTimeout(t);
   }, [sa.selected, q]);
 
-  // Reset when switching sub-account
-  useEffect(() => { setPicked(null); setDetail(null); setChat([]); }, [sa.selected]);
+  // Reset when switching sub-account; then open a contact from a notification link (?sa=&contact=)
+  useEffect(() => {
+    setPicked(null); setDetail(null); setChat([]);
+    const link = deepLink.current;
+    if (!link || !sa.selected) return;
+    if (link.sa && link.sa !== sa.selected && sa.items.some((s) => s.id === link.sa)) { sa.setSelected(link.sa); return; }
+    deepLink.current = null;
+    open({ id: link.contact, name: 'Loading…', email: '', phone: '', tags: [], company: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sa.selected, sa.items]);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [chat]);
 
@@ -89,6 +112,7 @@ export default function LeadsPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Could not summarize');
       setDetail(d);
+      if (d.contact) setPicked(d.contact);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -141,9 +165,11 @@ export default function LeadsPage() {
             <label className="relative block">
               <span className="sr-only">Search contacts</span>
               <IconSearch size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email or phone" className={field + ' pl-11'} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, email or phone number" className={field + ' pl-11'} inputMode="search" />
             </label>
-            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted">{q ? 'Results' : 'Recently updated'}</p>
+            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted">
+              {q ? (/@/.test(q) ? 'Email match' : /^[+()\d\s.-]{7,}$/.test(q) ? 'Phone match' : 'Results') : 'Recently updated'}
+            </p>
             {listError && <p className="rounded-2xl bg-bad/10 px-4 py-3 text-sm text-bad">{listError}</p>}
             <ul className="space-y-2">
               {contacts === null && [0, 1, 2, 3].map((i) => <li key={i} className="h-16 animate-pulse rounded-2xl bg-card" />)}
@@ -209,6 +235,14 @@ export default function LeadsPage() {
                   {detail && (detail.summary ? <Summary text={detail.summary} /> : <p className="text-muted">{detail.note || 'Nothing to summarize.'}</p>)}
                 </div>
 
+                {detail && detail.states && (
+                  <FollowupComposer key={detail.contact.id} subaccountId={sa.selected} contactId={detail.contact.id}
+                    contactName={detail.contact.name} senderName={detail.senderName} states={detail.states}
+                    draft={detail.followup ? { short: '', email_subject: '', email_body: '', ...detail.followup } : null}
+                    lastLeadChannel={[...detail.messages].reverse().find((m) => m.who === 'Lead')?.channel}
+                    onSent={() => setSentVersion((v) => v + 1)} />
+                )}
+
                 {detail && detail.messageCount > 0 && (
                   <div className="rounded-[24px] border border-line bg-panel p-5 sm:p-6">
                     <h3 className="mb-3 text-lg font-semibold">Ask about this lead</h3>
@@ -241,6 +275,8 @@ export default function LeadsPage() {
                     </form>
                   </div>
                 )}
+
+                {detail && <FollowupHistory subaccountId={sa.selected} contactId={detail.contact.id} version={sentVersion} />}
 
                 {detail && detail.messages.length > 0 && (
                   <div className="rounded-[24px] border border-line bg-panel p-5 sm:p-6">

@@ -1,7 +1,7 @@
 import type { Activity } from '@/lib/types';
 import {
   IconTag, IconUserEdit, IconBriefcase, IconCalendar, IconNote, IconTask, IconChat, IconMail,
-  IconReceipt, IconBell, IconAlert, IconSparkle
+  IconReceipt, IconBell, IconAlert, IconSparkle, IconSend
 } from '@/components/Icons';
 
 const ICONS: Record<string, typeof IconTag> = {
@@ -11,7 +11,7 @@ const ICONS: Record<string, typeof IconTag> = {
   book_appointment: IconCalendar, reschedule_appointment: IconCalendar, cancel_appointment: IconCalendar,
   add_note: IconNote, add_task: IconTask,
   send_sms: IconChat, send_email: IconMail,
-  create_invoice: IconReceipt, notify_team_member: IconBell
+  create_invoice: IconReceipt, notify_team_member: IconBell, send_followup: IconSend
 };
 
 // Highlights the quoted names in a message: Tag "VIP" added to contact "John"

@@ -9,7 +9,8 @@ Browser (Next.js on Vercel)
   ├─ /login         Supabase email sign-in (password, magic link, sign-up)
   ├─ /              Home: greeting, Talk to Nova, sub-account picker, recent activity
   ├─ /talk          Call screen: orb, mic / mute, typed input, live "This call" feed
-  ├─ /leads         AI lead summary + Q&A about any contact's conversation (Gemini)
+  ├─ /leads         AI lead summary, Q&A, AI follow-up you can edit and send (SMS/Email/FB/IG), follow-up history
+  ├─ /subaccounts/[id]/branding  Email branding per sub-account with live preview
   ├─ /history       Every action with day, date and time, filters and search
   └─ /subaccounts   Add / edit / remove GHL sub-accounts (location ID, token, timezone…)
         │
@@ -65,6 +66,8 @@ In the Supabase dashboard:
 | `VOX_CALL_NUMBER` | `crm` |
 | `SCENARIO_SECRET` | output of `openssl rand -hex 32` |
 | `GEMINI_API_KEY` | same Gemini key as in Voximplant (used by the Leads page) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | from `npx web-push generate-vapid-keys` (push notifications) |
+| `VAPID_SUBJECT` | `mailto:` + your email |
 
 3. Deploy, then put the Vercel URL into Supabase (step 1).
 
@@ -91,6 +94,20 @@ converts times to the sub-account's timezone, and asks Gemini for a sectioned su
 of the conversation each time; the follow-up history stays in the browser, so each team member has their own. It works for every
 sub-account added on the Sub-accounts page, using that sub-account's token (needs `conversations.readonly`,
 `conversations/message.readonly` and `contacts.readonly`).
+
+## Follow-ups
+After the summary, Gemini drafts the best next message: a short one for SMS, Facebook and Instagram, and an email (subject and body).
+Edit it and send it through GHL (`POST /conversations/messages`).
+- Facebook and Instagram are greyed out unless the lead messaged on that channel in the last 24 hours (Meta's reply window).
+  SMS needs a phone number and Email needs an email address.
+- If anything was sent to the contact in the last 5 minutes (in GHL, or from Nova), you get a warning and must confirm.
+- Every send is saved in `followups` (shown as *Follow-up history* on the lead) and in the main History.
+- Emails use the sub-account's **email branding** (Sub-accounts › Email branding): logo, font, size, colours, signature, footer.
+
+## Message alerts (in-app + push)
+For each sub-account, create a GHL workflow: Trigger **Customer Replied** → Action **Webhook** (POST) to the URL shown under
+Sub-accounts › Message alerts (`/api/webhooks/ghl/<key>`). Each inbound message then shows in the bell panel and, for users who turned
+push on, as a phone/desktop notification. Tapping it opens the lead. On iPhone, add Nova to the Home Screen first (iOS 16.4+).
 
 ## Security notes
 - GHL tokens live only in Supabase. They're read with the service-role key on the server and never sent to the browser (the UI shows `••••abcd`).

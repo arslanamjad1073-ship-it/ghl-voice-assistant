@@ -23,3 +23,15 @@ Rules:
 - Whenever you mention a specific message, name its channel (SMS, Email, Call, Facebook, Instagram, WhatsApp...).
 - Write dates like "July 6, 2026 at 2:08 PM". Never output raw timestamps, JSON or HTML.
 - Plain text only. No markdown, no headings. Use a short list only if the question asks for one.`;
+
+export const FOLLOWUP_PROMPT = `You write the single best next follow-up message from our team to a lead, based on their conversation with us.
+Goal: move the lead to the next step that fits where the conversation stands (answer what is still open, confirm a booking,
+send the info they asked for, or gently re-engage if they went quiet). Use ONLY facts from the transcript; never invent prices,
+dates, links or promises. Match the lead's language and tone. Use their first name if known.
+
+Return JSON only, exactly:
+{"short": "...", "email_subject": "...", "email_body": "..."}
+- short: for SMS, Facebook or Instagram. Under 300 characters, friendly, no greeting line break, no sign-off.
+- email_subject: under 70 characters.
+- email_body: plain text, 60-160 words, start with a greeting line, short paragraphs separated by a blank line.
+  Do NOT add a sign-off or signature; it is added automatically.`;

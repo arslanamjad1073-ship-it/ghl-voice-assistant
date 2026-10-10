@@ -53,7 +53,33 @@ export function toContact(c: RawContact): Contact {
   return { id: c.id, name, email: c.email || '', phone: c.phone || '', tags: c.tags || [], company: c.companyName || '', added: c.dateAdded || '' };
 }
 
+const looksEmail = (q: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(q);
+const looksPhone = (q: string) => /^[+()\d\s.\-]{7,}$/.test(q) && q.replace(/\D/g, '').length >= 7;
+
+// Exact match by email or phone (GHL's duplicate lookup handles phone formats)
+async function findExact(sa: SubaccountSecret, q: string): Promise<Contact[]> {
+  const param = looksEmail(q) ? 'email=' + encodeURIComponent(q.toLowerCase())
+    : looksPhone(q) ? 'number=' + encodeURIComponent(q.replace(/[^\d+]/g, '')) : '';
+  if (!param) return [];
+  try {
+    const d = await ghl<{ contact?: RawContact }>(sa.ghl_token,
+      '/contacts/search/duplicate?locationId=' + encodeURIComponent(sa.location_id) + '&' + param);
+    return d.contact && d.contact.id ? [toContact(d.contact)] : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function searchContacts(sa: SubaccountSecret, query: string) {
+  if (query) {
+    const [exact, fuzzy] = await Promise.all([findExact(sa, query), searchContactsRaw(sa, query).catch(() => [] as Contact[])]);
+    const seen = new Set(exact.map((c) => c.id));
+    return [...exact, ...fuzzy.filter((c) => !seen.has(c.id))];
+  }
+  return searchContactsRaw(sa, '');
+}
+
+async function searchContactsRaw(sa: SubaccountSecret, query: string) {
   const body: Record<string, unknown> = { locationId: sa.location_id, pageLimit: 25 };
   if (query) body.query = query;
   else body.sort = [{ field: 'dateUpdated', direction: 'desc' }];
@@ -170,4 +196,47 @@ export function transcriptText(messages: TranscriptMessage[]) {
     lines.push(m.who + ' (' + m.channel + ') at ' + m.when.split(', ').pop() + ':', m.text, '');
   }
   return lines.join('\n').trim();
+}
+
+// ---------- channels ----------
+export type Channel = 'sms' | 'email' | 'facebook' | 'instagram';
+export const CHANNEL_LABEL: Record<Channel, string> = { sms: 'SMS', email: 'Email', facebook: 'Facebook', instagram: 'Instagram' };
+const GHL_TYPE: Record<Channel, string> = { sms: 'SMS', email: 'Email', facebook: 'FB', instagram: 'IG' };
+const DAY = 24 * 3600 * 1000;
+
+export interface ChannelState { available: boolean; reason?: string; closesAt?: string }
+
+// Which channels can be used right now. Facebook/Instagram only within 24h of the lead's last message there.
+export function channelStates(contact: Contact, messages: TranscriptMessage[], now = Date.now()): Record<Channel, ChannelState> {
+  const lastInbound = (label: string) => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].who === 'Lead' && messages[i].channel === label) return new Date(messages[i].at).getTime();
+    }
+    return 0;
+  };
+  const social = (label: string): ChannelState => {
+    const t = lastInbound(label);
+    if (!t) return { available: false, reason: 'The lead has never messaged on ' + label + '.' };
+    if (now - t > DAY) return { available: false, reason: label + "'s 24-hour reply window is closed (their last message was more than 24 hours ago)." };
+    return { available: true, closesAt: new Date(t + DAY).toISOString() };
+  };
+  return {
+    sms: contact.phone ? { available: true } : { available: false, reason: 'This contact has no phone number.' },
+    email: contact.email ? { available: true } : { available: false, reason: 'This contact has no email address.' },
+    facebook: social('Facebook'),
+    instagram: social('Instagram')
+  };
+}
+
+// Most recent message our team sent (any channel), from the transcript
+export function lastOutbound(messages: TranscriptMessage[]) {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].who === 'Team') return messages[i];
+  return null;
+}
+
+export async function sendMessage(sa: SubaccountSecret, contactId: string, channel: Channel, text: string, email?: { subject: string; html: string }) {
+  const body: Record<string, unknown> = { type: GHL_TYPE[channel], contactId, message: text };
+  if (channel === 'email' && email) Object.assign(body, { subject: email.subject, html: email.html });
+  const d = await ghl<{ messageId?: string; id?: string; emailMessageId?: string }>(sa.ghl_token, '/conversations/messages', { method: 'POST', body, version: CONV_V });
+  return d.messageId || d.emailMessageId || d.id || '';
 }
