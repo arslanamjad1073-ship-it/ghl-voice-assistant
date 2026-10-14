@@ -14,8 +14,9 @@ export async function POST(req: Request) {
   if (!subaccountId) return NextResponse.json({ error: 'Choose a sub-account first' }, { status: 400 });
 
   const db = supabaseAdmin();
-  const { data: sa } = await db.from('subaccounts').select('id,name').eq('id', subaccountId).maybeSingle();
+  const { data: sa } = await db.from('subaccounts').select('id,name,voice_enabled').eq('id', subaccountId).maybeSingle();
   if (!sa) return NextResponse.json({ error: 'Sub-account not found' }, { status: 404 });
+  if (!sa.voice_enabled) return NextResponse.json({ error: 'Voice is turned off for this sub-account. An admin can turn it on under Accounts › Edit.' }, { status: 403 });
 
   const user = process.env.VOX_USER, app = process.env.VOX_APP;
   if (!user || !app || !process.env.VOX_PASSWORD) {

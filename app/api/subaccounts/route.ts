@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     invoice_live_mode: b.invoice_live_mode !== false,
     invoice_sender_name: str(b.invoice_sender_name) || null,
     notify_webhook_url: str(b.notify_webhook_url) || null,
+    voice_enabled: b.voice_enabled === true,
     created_by: auth.user.id
   };
   const { data, error } = await supabaseAdmin().from('subaccounts').insert(row).select(SUBACCOUNT_PUBLIC_COLUMNS).single();

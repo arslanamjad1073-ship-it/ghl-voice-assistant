@@ -26,6 +26,7 @@ export interface SubaccountPublic {
   notify_webhook_url: string | null;
   token_hint: string;
   webhook_key: string;
+  voice_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

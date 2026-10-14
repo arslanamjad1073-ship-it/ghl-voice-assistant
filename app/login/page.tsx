@@ -74,10 +74,10 @@ function LoginForm() {
       <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
         <div className="mb-6 lg:-ml-6"><Orb state="live" size={220} /></div>
         <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-          Run your CRM<br />by voice.
+          Run your CRM<br />with one prompt.
         </h1>
         <p className="mt-4 max-w-sm text-[15px] text-muted">
-          Meet Nova. Find contacts, add tags, book appointments and send invoices, just by asking.
+          Type what you need: send an email, book an appointment, create an invoice. Nova fills in the form for you.
         </p>
       </section>
 

@@ -1,4 +1,4 @@
-# Nova · Flowminds voice CRM assistant
+# Nova · Flowminds CRM assistant
 
 A web app for running GoHighLevel sub-accounts by voice. Your team signs in with their email (Supabase Auth), picks a sub-account, taps the mic and talks to **Nova**. Every change Nova makes shows up live and is saved to the history, for example:
 
@@ -27,6 +27,25 @@ Supabase: auth + tables subaccounts, call_sessions, activities
         │
 Voximplant scenario (voximplant/scenario.js): Gemini Live + GHL tools
 ```
+
+## Prompt command center (Home)
+Type what you want, e.g. *"Send an email to peter@example.com thanking him for the call"*. Gemini works out the action
+(`/api/assist/parse`) and Nova shows a pre-filled form you review and submit. Everything runs through the GHL API and lands in History.
+
+| Prompt | Form |
+|---|---|
+| send an email / SMS | contact (search or create), subject and body, "Ask AI to write it", email preview with branding, 5-minute resend warning |
+| create an invoice | items (name, qty, price), currency, due date, send by email / SMS / both / draft |
+| add / remove tags | tag chips with the account's existing tags, contact's current tags |
+| create / move an opportunity | contact's existing deals, pipeline and stage dropdowns from GHL, status, value |
+| book an appointment | calendar dropdown, week view: available (cyan), booked (purple), blocked (striped red), selected |
+| add a task / note | assignee dropdown from GHL users, due date and time; AI can write the note |
+| summarize a lead | opens the Leads page for that contact |
+
+Quick buttons under the prompt open the same forms empty. Account data for the dropdowns comes from `/api/ghl/meta`.
+
+**Voice is an optional add-on**, off by default. An admin turns it on per sub-account (Accounts › Edit › Nova voice); the Talk tab
+and "Talk instead" button only appear when it is on.
 
 ## How a call works
 1. The user picks a sub-account and taps the mic. `/api/call/start` creates a `call_sessions` row with a random token.

@@ -16,9 +16,9 @@ const input = 'h-12 w-full rounded-2xl border border-line bg-card px-4 text-[15p
 
 interface Form {
   name: string; location_id: string; ghl_token: string; timezone: string; currency: string;
-  invoice_live_mode: boolean; invoice_sender_name: string; notify_webhook_url: string;
+  invoice_live_mode: boolean; invoice_sender_name: string; notify_webhook_url: string; voice_enabled: boolean;
 }
-const EMPTY: Form = { name: '', location_id: '', ghl_token: '', timezone: '', currency: 'USD', invoice_live_mode: true, invoice_sender_name: '', notify_webhook_url: '' };
+const EMPTY: Form = { name: '', location_id: '', ghl_token: '', timezone: '', currency: 'USD', invoice_live_mode: true, invoice_sender_name: '', notify_webhook_url: '', voice_enabled: false };
 
 function Field({ label, hint, children }: { label: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -50,7 +50,8 @@ export default function SubaccountsPage() {
   function openEdit(s: SubaccountPublic) {
     setForm({
       name: s.name, location_id: s.location_id, ghl_token: '', timezone: s.timezone, currency: s.currency,
-      invoice_live_mode: s.invoice_live_mode, invoice_sender_name: s.invoice_sender_name || '', notify_webhook_url: s.notify_webhook_url || ''
+      invoice_live_mode: s.invoice_live_mode, invoice_sender_name: s.invoice_sender_name || '', notify_webhook_url: s.notify_webhook_url || '',
+      voice_enabled: !!s.voice_enabled
     });
     setEditing(s); setError(''); setNotice('');
   }
@@ -147,6 +148,16 @@ export default function SubaccountsPage() {
               </Field>
             </div>
 
+            <Field label="Nova voice (optional add-on)" hint="Lets the team also talk to Nova by voice in this sub-account. Needs the Voximplant setup in the README.">
+              <button type="button" onClick={() => set('voice_enabled', !form.voice_enabled)} aria-pressed={form.voice_enabled}
+                className="flex h-12 w-full items-center justify-between rounded-2xl border border-line bg-card px-4 text-[15px]">
+                {form.voice_enabled ? 'Voice on' : 'Voice off (prompts only)'}
+                <span className={`relative h-6 w-11 rounded-full transition ${form.voice_enabled ? 'bg-cyan' : 'bg-card-2'}`}>
+                  <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${form.voice_enabled ? 'left-[22px]' : 'left-0.5'}`} />
+                </span>
+              </button>
+            </Field>
+
             <Field label="Team notification webhook URL" hint="Inbound Webhook trigger of a GHL workflow that sends internal notifications. Optional.">
               <input className={input} type="url" value={form.notify_webhook_url} onChange={(e) => set('notify_webhook_url', e.target.value)} placeholder="https://services.leadconnectorhq.com/hooks/…" />
             </Field>
@@ -188,7 +199,7 @@ export default function SubaccountsPage() {
                 {s.id === sa.selected && <span className="shrink-0 rounded-full bg-cyan/15 px-2.5 py-0.5 text-xs font-medium text-cyan">Active</span>}
               </div>
               <p className="mt-0.5 truncate font-mono text-xs text-muted">{s.location_id}</p>
-              <p className="mt-2 text-sm text-muted">{s.timezone} · {s.currency} · {s.invoice_live_mode ? 'Live invoices' : 'Test invoices'}{s.notify_webhook_url ? ' · Notifications on' : ''}</p>
+              <p className="mt-2 text-sm text-muted">{s.timezone} · {s.currency} · {s.invoice_live_mode ? 'Live invoices' : 'Test invoices'}{s.voice_enabled ? ' · Voice on' : ''}{s.notify_webhook_url ? ' · Notifications on' : ''}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {s.id !== sa.selected && (
                   <button onClick={() => sa.setSelected(s.id)} className="h-9 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">Use this one</button>

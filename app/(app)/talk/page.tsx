@@ -107,6 +107,21 @@ export default function TalkPage() {
   const showType = phase === 'live' && (typeOpen || !!ask);
   const kind = ask?.kind || 'text';
 
+  // Voice is an optional add-on per sub-account
+  if (!sa.loading && sa.current && !sa.current.voice_enabled && phase === 'idle') {
+    return (
+      <div className="mx-auto max-w-md py-16 text-center">
+        <div className="mx-auto mb-6 w-fit"><Orb state="idle" size={160} /></div>
+        <h1 className="text-2xl font-semibold">Voice is off for {sa.current.name}</h1>
+        <p className="mt-2 text-[15px] text-muted">Nova works by typed prompts on the Home screen. Talking to Nova is an optional add-on an admin can turn on under Accounts › Edit › Nova voice.</p>
+        <div className="mt-6 flex justify-center gap-2">
+          <Link href="/" className="inline-flex h-11 items-center rounded-full bg-cyan px-5 font-semibold text-cyan-ink">Type a prompt</Link>
+          <Link href="/subaccounts" className="inline-flex h-11 items-center rounded-full bg-card px-5 hover:bg-card-2">Accounts</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-[calc(100dvh-3rem)] flex-col">
       <header className="flex items-center gap-4">

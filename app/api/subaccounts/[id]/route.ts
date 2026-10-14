@@ -27,6 +27,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   if (str(b.currency)) patch.currency = str(b.currency).toUpperCase();
   if (typeof b.invoice_live_mode === 'boolean') patch.invoice_live_mode = b.invoice_live_mode;
+  if (typeof b.voice_enabled === 'boolean') patch.voice_enabled = b.voice_enabled;
   if ('invoice_sender_name' in b) patch.invoice_sender_name = str(b.invoice_sender_name) || null;
   if ('notify_webhook_url' in b) patch.notify_webhook_url = str(b.notify_webhook_url) || null;
 

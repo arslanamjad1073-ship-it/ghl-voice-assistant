@@ -2,7 +2,7 @@ import 'server-only';
 import type { SubaccountPublic } from '@/lib/types';
 
 export const SUBACCOUNT_PUBLIC_COLUMNS =
-  'id,name,location_id,timezone,currency,invoice_live_mode,invoice_sender_name,notify_webhook_url,webhook_key,ghl_token,created_at,updated_at';
+  'id,name,location_id,timezone,currency,invoice_live_mode,invoice_sender_name,notify_webhook_url,webhook_key,voice_enabled,ghl_token,created_at,updated_at';
 
 // Strips the token, keeping only its last 4 characters as a hint
 export function toPublic(row: Record<string, unknown>): SubaccountPublic {

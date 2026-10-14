@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Nova · Flowminds',
     short_name: 'Nova',
-    description: 'Run your CRM by voice.',
+    description: 'Run your CRM with one prompt.',
     start_url: '/',
     display: 'standalone',
     background_color: '#121314',

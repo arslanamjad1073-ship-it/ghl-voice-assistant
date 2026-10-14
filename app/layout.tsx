@@ -6,7 +6,7 @@ const exo = Exo_2({ subsets: ['latin'], weight: ['400', '500', '600', '700'], va
 
 export const metadata: Metadata = {
   title: 'Nova · Flowminds',
-  description: 'Run your CRM by voice.'
+  description: 'Run your CRM with one prompt.'
 };
 
 export const viewport: Viewport = { themeColor: '#121314', width: 'device-width', initialScale: 1 };
