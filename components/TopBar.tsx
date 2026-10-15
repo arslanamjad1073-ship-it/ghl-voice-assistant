@@ -15,6 +15,10 @@ export default function TopBar({ name, email }: { name: string; email: string })
         <span className="text-cyan">Flow</span>minds <span className="font-normal text-muted">· Nova</span>
       </Link>
       <div className="relative flex items-center gap-2">
+        <Link href="/settings/ai" aria-label="AI keys & usage" title="AI keys & usage"
+          className={`inline-flex h-11 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition sm:px-4 ${path.startsWith('/settings/ai') ? 'bg-cyan text-cyan-ink' : 'bg-card text-fg hover:bg-card-2'}`}>
+          <IconSparkle size={17} /><span className="hidden sm:inline">AI keys</span>
+        </Link>
         <NotificationCenter />
         <button onClick={() => setMenu((m) => !m)} aria-label="Account" aria-expanded={menu}
           className="flex size-11 items-center justify-center rounded-full bg-card text-sm font-semibold text-cyan hover:bg-card-2">

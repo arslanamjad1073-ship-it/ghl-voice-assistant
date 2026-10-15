@@ -86,7 +86,7 @@ export default function SubaccountsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[30px] font-semibold tracking-tight">Sub-accounts</h1>
-          <p className="mt-1 text-[15px] text-muted">The GHL sub-accounts Nova can work in.</p>
+          <p className="mt-1 text-[15px] text-muted">The GHL sub-accounts Nova can work in. The AI key is set on the <Link href="/settings/ai" className="text-cyan hover:underline">AI keys &amp; usage</Link> page.</p>
         </div>
         {sa.canManage && !editing && (
           <button onClick={openNew} className="inline-flex h-12 items-center gap-2 rounded-full bg-cyan px-5 font-semibold text-cyan-ink hover:bg-[#7ddcf7]">
