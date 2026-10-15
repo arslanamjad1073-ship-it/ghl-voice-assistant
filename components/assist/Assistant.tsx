@@ -33,8 +33,8 @@ function SummaryCard({ subaccountId, initial, onClose }: { subaccountId: string;
   );
 }
 
-export default function Assistant({ subaccountId, subaccountName, senderName, voiceEnabled, onDone }: {
-  subaccountId: string; subaccountName: string; senderName: string; voiceEnabled: boolean; onDone: () => void;
+export default function Assistant({ subaccountId, subaccountName, senderName, userEmail, voiceEnabled, onDone }: {
+  subaccountId: string; subaccountName: string; senderName: string; userEmail: string; voiceEnabled: boolean; onDone: () => void;
 }) {
   const [prompt, setPrompt] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -79,7 +79,7 @@ export default function Assistant({ subaccountId, subaccountName, senderName, vo
 
   function renderCard(en: Entry) {
     if (!meta || !en.initial || !en.action) return null;
-    const props = { subaccountId, meta, initial: en.initial, onDone, onClose: () => close(en.id), senderName };
+    const props = { subaccountId, meta, initial: en.initial, onDone, onClose: () => close(en.id), senderName, userEmail };
     switch (en.action) {
       case 'send_email': return <MessageCard kind="email" {...props} />;
       case 'send_sms': return <MessageCard kind="sms" {...props} />;

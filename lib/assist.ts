@@ -1,5 +1,5 @@
 import 'server-only';
-import { gemini } from '@/lib/gemini';
+import { llm, type Track } from '@/lib/llm';
 import type { Meta } from '@/lib/ghlActions';
 
 export const ACTIONS = ['send_email', 'send_sms', 'create_invoice', 'add_tags', 'remove_tags', 'opportunity', 'book_appointment', 'add_note', 'add_task', 'lead_summary', 'unknown'] as const;
@@ -15,9 +15,9 @@ export interface Parsed {
 
 const PARSE_PROMPT = `You turn a CRM user's request into ONE action with pre-filled fields for a form. The user then reviews and submits it.
 Actions:
-- send_email: fields {subject, body}
-- send_sms: fields {body}
-- create_invoice: fields {items:[{name, quantity, unit_price}], due_date (YYYY-MM-DD), currency (3 letters), send_via ("email"|"sms"|"both"|"none"), notes}
+- send_email: fields {subject, body, from}
+- send_sms: fields {body, from}
+- create_invoice: fields {items:[{name, quantity, unit_price}], due_date (YYYY-MM-DD), currency (3 letters), send_via ("email"|"sms"|"both"|"none"), notes, from, mode ("live"|"test")}
 - add_tags / remove_tags: fields {tags:[...]}
 - opportunity (create a deal, move it to a stage, mark won/lost, change value): fields {name, pipeline, stage, status ("open"|"won"|"lost"|"abandoned"), value}
 - book_appointment: fields {calendar, date (YYYY-MM-DD), time (HH:MM 24h), title, notes}
@@ -32,11 +32,12 @@ Rules:
 - contact_query: the contact's email, phone or name exactly as the user wrote it ("" if none).
 - write_instruction: when the user asks you to WRITE content (email, SMS, note) or describes what it should say, put that instruction here
   (e.g. "thank them for the call and offer a time next week"). Leave fields.subject/body empty then. If the user dictated exact text, put it in the fields instead.
-- Only fill fields the user actually gave. Use names exactly from the lists below when they match (pipeline, stage, calendar, assignee).
+- Only fill fields the user actually gave. Use names exactly from the lists below when they match (pipeline, stage, calendar, assignee, from).
+- from: the team member to send as, only when the user names one ("send it from Sara", "as Ali").
 - Convert relative dates ("tomorrow", "next Monday", "the 15th") using today's date below. Never invent prices or amounts.
 - reply: one short sentence telling the user what the form is for, e.g. "Here's an email to Peter John. Review and send."`;
 
-export async function parsePrompt(prompt: string, meta: Meta): Promise<Parsed> {
+export async function parsePrompt(prompt: string, meta: Meta, track?: Track): Promise<Parsed> {
   const context = [
     'Today: ' + meta.today + ' (' + new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: meta.timezone }) + '), timezone ' + meta.timezone,
     'Default currency: ' + meta.currency,
@@ -44,7 +45,7 @@ export async function parsePrompt(prompt: string, meta: Meta): Promise<Parsed> {
     'Calendars: ' + (meta.calendars.map((c) => c.name).join(', ') || 'none'),
     'Team members: ' + (meta.users.map((u) => u.name).join(', ') || 'none')
   ].join('\n');
-  const text = await gemini(PARSE_PROMPT + '\n\n' + context, [{ role: 'user', text: prompt.slice(0, 2000) }], { json: true, temperature: 0.1 });
+  const text = await llm(PARSE_PROMPT + '\n\n' + context, [{ role: 'user', text: prompt.slice(0, 2000) }], { json: true, temperature: 0.1, track });
   let d: Partial<Parsed> = {};
   try { d = JSON.parse(text.replace(/^```(json)?|```$/g, '').trim()); } catch { /* unknown */ }
   const action = (ACTIONS as readonly string[]).includes(String(d.action)) ? (d.action as Action) : 'unknown';
@@ -66,12 +67,12 @@ Return JSON only.
 - kind "sms": {"body": "..."} under 300 characters, no sign-off.
 - kind "note": {"body": "..."} an internal CRM note in clean complete sentences.`;
 
-export async function writeContent(kind: 'email' | 'sms' | 'note', instruction: string, ctx: { contactName?: string; company: string; sender: string; transcript?: string }) {
-  const text = await gemini(WRITE_PROMPT, [{
+export async function writeContent(kind: 'email' | 'sms' | 'note', instruction: string, ctx: { contactName?: string; company: string; sender: string; transcript?: string }, track?: Track) {
+  const text = await llm(WRITE_PROMPT, [{
     role: 'user',
     text: `kind: ${kind}\nInstruction: ${instruction}\nContact: ${ctx.contactName || 'unknown'}\nWe are: ${ctx.company} (writer: ${ctx.sender})` +
       (ctx.transcript ? `\n\nRecent conversation (oldest first):\n${ctx.transcript.slice(-12000)}` : '')
-  }], { json: true, temperature: 0.5 });
+  }], { json: true, temperature: 0.5, track });
   let d: { subject?: string; body?: string } = {};
   try { d = JSON.parse(text.replace(/^```(json)?|```$/g, '').trim()); } catch { d = { body: text }; }
   return { subject: String(d.subject || '').slice(0, 200), body: String(d.body || '').slice(0, 5000) };

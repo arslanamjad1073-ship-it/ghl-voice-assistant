@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 import ContactPicker from '@/components/assist/ContactPicker';
 import AiWrite from '@/components/assist/AiWrite';
 import WeekCalendar, { clock } from '@/components/assist/WeekCalendar';
-import { Card, Field, Result, input, textarea, primaryBtn, ghostBtn, postJson, ACTION, matchName, type Meta, type Contact } from '@/components/assist/ui';
+import { Card, Field, Result, input, textarea, primaryBtn, ghostBtn, postJson, ACTION, matchName, defaultSender, SendAsSelect, type Meta, type Contact } from '@/components/assist/ui';
 import { IconMail, IconChat, IconTag, IconNote, IconTask, IconBriefcase, IconCalendar, IconReceipt, IconSend, IconPlus, IconTrash, IconAlert } from '@/components/Icons';
 import { renderEmail } from '@/lib/emailTemplate';
 
 export interface Initial { contact: Contact | null; candidates: Contact[]; query: string; fields: Record<string, unknown> }
-interface Props { subaccountId: string; meta: Meta; initial: Initial; onDone: () => void; onClose: () => void; senderName: string }
+interface Props { subaccountId: string; meta: Meta; initial: Initial; onDone: () => void; onClose: () => void; senderName: string; userEmail: string }
 
 const s = (v: unknown) => (typeof v === 'string' ? v : v === undefined || v === null ? '' : String(v));
 type Res = { ok: boolean; text: string } | null;
@@ -20,8 +20,11 @@ function addDays(date: string, n: number) {
 }
 
 // ---------------- Email / SMS ----------------
-export function MessageCard({ kind, subaccountId, initial, onDone, onClose, senderName }: Props & { kind: 'email' | 'sms' }) {
+export function MessageCard({ kind, subaccountId, meta, initial, onDone, onClose, senderName: myName, userEmail }: Props & { kind: 'email' | 'sms' }) {
   const isEmail = kind === 'email';
+  const [fromId, setFromId] = useState(() => defaultSender(meta.users, initial.fields.from, userEmail));
+  const fromName = meta.users.find((u) => u.id === fromId)?.name || '';
+  const senderName = fromName || myName;
   const [contact, setContact] = useState<Contact | null>(initial.contact);
   const [subject, setSubject] = useState(s(initial.fields.subject));
   const [body, setBody] = useState(s(initial.fields.body));
@@ -44,20 +47,21 @@ export function MessageCard({ kind, subaccountId, initial, onDone, onClose, send
     if (!contact) return;
     setBusy(true); setResult(null); setWarning('');
     const { ok, status, data } = await postJson<{ warning?: string }>('/api/leads/send', {
-      subaccountId, contactId: contact.id, channel: kind, subject: isEmail ? subject : undefined, body, aiSuggested: ai, edited: true, confirm
+      subaccountId, contactId: contact.id, channel: kind, subject: isEmail ? subject : undefined, body, fromUserId: fromId, fromName, aiSuggested: ai, edited: true, confirm
     });
     setBusy(false);
     if (status === 409 && data.warning) return setWarning(data.warning);
     if (!ok) return setResult({ ok: false, text: data.error || 'Could not send' });
-    setResult({ ok: true, text: `${isEmail ? 'Email' : 'SMS'} sent to ${contact.name}.` });
+    setResult({ ok: true, text: `${isEmail ? 'Email' : 'SMS'} sent to ${contact.name}${fromName ? ' as ' + fromName : ''}.` });
     onDone();
   }
 
   const missing = contact && !(isEmail ? contact.email : contact.phone);
   return (
     <Card icon={isEmail ? <IconMail size={19} /> : <IconChat size={19} />} title={isEmail ? 'Send an email' : 'Send an SMS'} onClose={onClose}
-      subtitle={isEmail ? 'Sent through GHL with this sub-account’s email branding.' : 'Sent through GHL from this sub-account’s number.'}>
+      subtitle={isEmail ? 'Sent through GHL with this sub-account’s email branding.' : 'Sent through GHL from this sub-account’s number, on behalf of the team member you pick.'}>
       <Field label="To"><ContactPicker subaccountId={subaccountId} value={contact} onChange={setContact} initialQuery={initial.query} candidates={initial.candidates} need={isEmail ? 'email' : 'phone'} /></Field>
+      <SendAsSelect users={meta.users} value={fromId} onChange={setFromId} />
       <AiWrite subaccountId={subaccountId} kind={kind} contactId={contact?.id} onResult={(r) => { if (isEmail && r.subject) setSubject(r.subject); setBody(r.body); setAi(true); }} />
       {isEmail && <Field label="Subject"><input value={subject} onChange={(e) => setSubject(e.target.value)} className={input} placeholder="Subject" /></Field>}
       <Field label="Message" hint={isEmail ? 'Your signature and branding are added automatically.' : `${body.length} characters · ${Math.max(1, Math.ceil(body.length / 160))} SMS segment(s)`}>
@@ -356,7 +360,7 @@ export function AppointmentCard({ subaccountId, meta, initial, onDone, onClose }
 
 // ---------------- Invoice ----------------
 interface Line { name: string; quantity: string; unitPrice: string }
-export function InvoiceCard({ subaccountId, meta, initial, onDone, onClose }: Props) {
+export function InvoiceCard({ subaccountId, meta, initial, onDone, onClose, userEmail }: Props) {
   const f = initial.fields;
   const parsedItems = Array.isArray(f.items) ? (f.items as Record<string, unknown>[]) : [];
   const [contact, setContact] = useState<Contact | null>(initial.contact);
@@ -367,6 +371,8 @@ export function InvoiceCard({ subaccountId, meta, initial, onDone, onClose }: Pr
   const [dueDate, setDueDate] = useState(/^\d{4}-\d{2}-\d{2}$/.test(s(f.due_date)) ? s(f.due_date) : addDays(meta.today, 7));
   const [sendVia, setSendVia] = useState(['email', 'sms', 'both', 'none'].includes(s(f.send_via)) ? s(f.send_via) : 'email');
   const [notes, setNotes] = useState(s(f.notes));
+  const [fromId, setFromId] = useState(() => defaultSender(meta.users, f.from, userEmail));
+  const [live, setLive] = useState(f.mode === 'test' ? false : f.mode === 'live' ? true : meta.invoiceLiveMode);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Res>(null);
   const total = items.reduce((t, i) => t + (Number(i.unitPrice) || 0) * (Number(i.quantity) || 0), 0);
@@ -378,7 +384,7 @@ export function InvoiceCard({ subaccountId, meta, initial, onDone, onClose }: Pr
     setBusy(true);
     const { ok, data } = await ACTION(subaccountId, 'create_invoice', contact.id, {
       items: items.filter((i) => i.name.trim()).map((i) => ({ name: i.name, quantity: Number(i.quantity) || 1, unitPrice: Number(i.unitPrice) })),
-      currency, dueDate, sendVia, notes
+      currency, dueDate, sendVia, notes, liveMode: live, senderUserId: fromId
     });
     setBusy(false);
     setResult(ok ? { ok: true, text: data.message || 'Created' } : { ok: false, text: data.error || 'Failed' });
@@ -386,7 +392,7 @@ export function InvoiceCard({ subaccountId, meta, initial, onDone, onClose }: Pr
   }
   return (
     <Card icon={<IconReceipt size={19} />} title="Create an invoice" onClose={onClose}
-      subtitle={meta.invoiceLiveMode ? 'Live mode: the contact can pay it for real.' : 'Test mode: no real payments.'}>
+      subtitle="Created in GHL Payments › Invoices.">
       <Field label="Bill to"><ContactPicker subaccountId={subaccountId} value={contact} onChange={setContact} initialQuery={initial.query} candidates={initial.candidates} /></Field>
       <div>
         <div className="mb-1.5 hidden grid-cols-[1fr_80px_120px_36px] gap-2 text-sm font-medium sm:grid"><span>Item</span><span>Qty</span><span>Unit price</span><span /></div>
@@ -410,6 +416,17 @@ export function InvoiceCard({ subaccountId, meta, initial, onDone, onClose }: Pr
           <select value={sendVia} onChange={(e) => setSendVia(e.target.value)} className={input}>
             <option value="email">Email</option><option value="sms">SMS</option><option value="both">Email + SMS</option><option value="none">Don’t send (draft)</option>
           </select>
+        </Field>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {sendVia !== 'none' ? <SendAsSelect users={meta.users} value={fromId} onChange={setFromId} /> : <div className="hidden sm:block" />}
+        <Field label="Mode" hint={live ? 'Live: the contact can pay it for real.' : 'Test: no real payments are taken.'}>
+          <div role="radiogroup" aria-label="Invoice mode" className="grid h-11 grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
+            {[{ v: true, l: 'Live' }, { v: false, l: 'Test' }].map((o) => (
+              <button key={o.l} type="button" role="radio" aria-checked={live === o.v} onClick={() => setLive(o.v)}
+                className={`rounded-lg text-sm font-medium transition ${live === o.v ? 'bg-cyan text-cyan-ink' : 'text-muted hover:text-fg'}`}>{o.l}</button>
+            ))}
+          </div>
         </Field>
       </div>
       <Field label="Note for the customer (optional)"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={textarea} /></Field>

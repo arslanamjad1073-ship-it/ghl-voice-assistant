@@ -66,3 +66,21 @@ export function matchName<T extends { name: string }>(list: T[], name: unknown):
   if (!n) return undefined;
   return list.find((x) => x.name.toLowerCase() === n) || list.find((x) => x.name.toLowerCase().includes(n) || n.includes(x.name.toLowerCase()));
 }
+
+// The GHL team member a message or invoice goes out as: the one named in the prompt,
+// else the member matching the signed-in email, else an admin, else the first member.
+export function defaultSender(users: Meta['users'], named: unknown, myEmail: string) {
+  const me = myEmail.toLowerCase();
+  return (matchName(users, named) || users.find((u) => me && u.email.toLowerCase() === me)
+    || users.find((u) => /admin/i.test(u.role)) || users[0])?.id || '';
+}
+
+export function SendAsSelect({ users, value, onChange }: { users: Meta['users']; value: string; onChange: (id: string) => void }) {
+  return (
+    <Field label="Send as" hint={users.length ? 'The team member this goes out from in GHL.' : 'No team members found in this sub-account.'}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={input} disabled={!users.length}>
+        {users.map((u) => <option key={u.id} value={u.id}>{u.name}{u.email ? ` · ${u.email}` : ''}</option>)}
+      </select>
+    </Field>
+  );
+}

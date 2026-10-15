@@ -21,18 +21,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (str(b.name)) patch.name = str(b.name);
   if (str(b.location_id)) patch.location_id = str(b.location_id);
   if (str(b.ghl_token)) patch.ghl_token = str(b.ghl_token); // blank = keep the current token
-  if (str(b.timezone)) {
-    if (!isValidTimeZone(str(b.timezone))) return NextResponse.json({ error: 'Unknown timezone "' + str(b.timezone) + '"' }, { status: 400 });
-    patch.timezone = str(b.timezone);
-  }
-  if (str(b.currency)) patch.currency = str(b.currency).toUpperCase();
-  if (typeof b.invoice_live_mode === 'boolean') patch.invoice_live_mode = b.invoice_live_mode;
   if (typeof b.voice_enabled === 'boolean') patch.voice_enabled = b.voice_enabled;
-  if ('invoice_sender_name' in b) patch.invoice_sender_name = str(b.invoice_sender_name) || null;
   if ('notify_webhook_url' in b) patch.notify_webhook_url = str(b.notify_webhook_url) || null;
 
   if (patch.location_id || patch.ghl_token) {
-    try { await fetchGhlLocation(String(patch.location_id || cur.location_id), String(patch.ghl_token || cur.ghl_token)); }
+    try {
+      const loc = await fetchGhlLocation(String(patch.location_id || cur.location_id), String(patch.ghl_token || cur.ghl_token));
+      if (isValidTimeZone(loc.timezone)) patch.timezone = loc.timezone;
+      if (/^[A-Z]{3}$/.test(loc.currency)) patch.currency = loc.currency;
+    }
     catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
   }
 

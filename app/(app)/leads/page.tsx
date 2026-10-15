@@ -11,7 +11,7 @@ interface Contact { id: string; name: string; email: string; phone: string; tags
 interface Msg { at: string; when: string; day: string; who: 'Lead' | 'Team' | 'System'; channel: string; text: string }
 interface Detail {
   contact: Contact; summary: string; messages: Msg[]; messageCount: number; channels: string[]; note?: string;
-  states: Record<Channel, ChannelState>; followup: Partial<Draft> | null; senderName: string;
+  states: Record<Channel, ChannelState>; followup: Partial<Draft> | null; senderName: string; userEmail?: string;
 }
 interface QA { q: string; a?: string; error?: boolean }
 
@@ -237,7 +237,7 @@ function Leads() {
 
                 {detail && detail.states && (
                   <FollowupComposer key={detail.contact.id} subaccountId={sa.selected} contactId={detail.contact.id}
-                    contactName={detail.contact.name} senderName={detail.senderName} states={detail.states}
+                    contactName={detail.contact.name} senderName={detail.senderName} userEmail={detail.userEmail} states={detail.states}
                     draft={detail.followup ? { short: '', email_subject: '', email_body: '', ...detail.followup } : null}
                     lastLeadChannel={[...detail.messages].reverse().find((m) => m.who === 'Lead')?.channel}
                     onSent={() => setSentVersion((v) => v + 1)} />

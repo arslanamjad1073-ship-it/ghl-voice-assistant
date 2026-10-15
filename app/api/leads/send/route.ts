@@ -10,7 +10,7 @@ export const maxDuration = 60;
 const FIVE_MIN = 5 * 60 * 1000;
 const CHANNELS: Channel[] = ['sms', 'email', 'facebook', 'instagram'];
 
-// POST { subaccountId, contactId, channel, subject?, body, aiSuggested?, edited?, confirm? }
+// POST { subaccountId, contactId, channel, subject?, body, fromUserId?, fromName?, aiSuggested?, edited?, confirm? }
 // 409 { warning } when something was sent to this contact in the last 5 minutes and confirm is not set.
 export async function POST(req: Request) {
   const auth = await requireUser();
@@ -58,7 +58,9 @@ export async function POST(req: Request) {
     }
   }
 
-  const sender = displayName(auth.user);
+  // "Send as": the GHL team member chosen in the form; the email signature uses their name
+  const fromUserId = String(b.fromUserId || '').slice(0, 100);
+  const sender = String(b.fromName || '').trim().slice(0, 100) || displayName(auth.user);
   const firstName = contact.name.split(/\s+/)[0] || '';
   let messageId = '', error = '';
   try {
@@ -66,9 +68,9 @@ export async function POST(req: Request) {
       const { data: row } = await db.from('subaccounts').select('email_branding').eq('id', sa.id).maybeSingle();
       const branding = { companyName: sa.name, ...(row?.email_branding || {}) };
       const html = renderEmail(branding, { subject, body: text, senderName: sender, firstName });
-      messageId = await sendMessage(sa, contact.id, channel, text, { subject, html });
+      messageId = await sendMessage(sa, contact.id, channel, text, { subject, html }, fromUserId);
     } else {
-      messageId = await sendMessage(sa, contact.id, channel, text);
+      messageId = await sendMessage(sa, contact.id, channel, text, undefined, fromUserId);
     }
   } catch (e) {
     error = (e as Error).message;
@@ -85,7 +87,7 @@ export async function POST(req: Request) {
     message: error
       ? `Follow-up ${CHANNEL_LABEL[channel]} to "${contact.name}" failed: ${error}`
       : channel === 'email' ? `Follow-up email "${subject}" sent to "${contact.name}"` : `Follow-up ${CHANNEL_LABEL[channel]} sent to "${contact.name}"`,
-    details: { channel, subject, body: text, ai_suggested: !!b.aiSuggested, edited: !!b.edited, source: 'leads' }
+    details: { channel, subject, body: text, sent_as: fromUserId ? sender : undefined, ai_suggested: !!b.aiSuggested, edited: !!b.edited, source: 'leads' }
   });
 
   if (error) return NextResponse.json({ error }, { status: 502 });

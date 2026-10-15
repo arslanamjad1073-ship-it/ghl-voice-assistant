@@ -110,7 +110,8 @@ export async function POST(req: Request) {
       })).filter((i) => i.name && !isNaN(i.unitPrice));
       const inv: InvoiceInput = {
         items, currency: str(d.currency, 3) || sa.currency, dueDate: str(d.dueDate, 10), title: str(d.title, 200), notes: str(d.notes, 2000),
-        sendVia: (['email', 'sms', 'both', 'none'].includes(str(d.sendVia)) ? str(d.sendVia) : 'none') as InvoiceInput['sendVia'], liveMode: sa.invoice_live_mode
+        sendVia: (['email', 'sms', 'both', 'none'].includes(str(d.sendVia)) ? str(d.sendVia) : 'none') as InvoiceInput['sendVia'],
+        liveMode: typeof d.liveMode === 'boolean' ? d.liveMode : sa.invoice_live_mode, senderUserId: str(d.senderUserId, 100)
       };
       if (!/^\d{4}-\d{2}-\d{2}$/.test(inv.dueDate)) return NextResponse.json({ error: 'Choose a due date' }, { status: 400 });
       return run('Creating invoice', async () => {

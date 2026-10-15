@@ -27,15 +27,13 @@ export async function POST(req: Request) {
   try { loc = await fetchGhlLocation(location_id, ghl_token); }
   catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
 
-  const timezone = str(b.timezone) || loc.timezone || 'UTC';
-  if (!isValidTimeZone(timezone)) return NextResponse.json({ error: 'Unknown timezone "' + timezone + '". Use a name like America/New_York.' }, { status: 400 });
+  // Timezone and currency come from GHL; anything unusable falls back to safe defaults
+  const timezone = isValidTimeZone(loc.timezone) ? loc.timezone : 'UTC';
 
   const row = {
     name: str(b.name) || loc.name || location_id,
     location_id, ghl_token, timezone,
-    currency: (str(b.currency) || 'USD').toUpperCase(),
-    invoice_live_mode: b.invoice_live_mode !== false,
-    invoice_sender_name: str(b.invoice_sender_name) || null,
+    currency: /^[A-Z]{3}$/.test(loc.currency) ? loc.currency : 'USD',
     notify_webhook_url: str(b.notify_webhook_url) || null,
     voice_enabled: b.voice_enabled === true,
     created_by: auth.user.id

@@ -23,5 +23,5 @@ export async function fetchGhlLocation(locationId: string, token: string) {
     throw new Error('GHL rejected the token or location (' + res.status + '): ' + msg);
   }
   const loc = data.location || data;
-  return { name: String(loc.name || ''), timezone: String(loc.timezone || '') };
+  return { name: String(loc.name || ''), timezone: String(loc.timezone || ''), currency: String(loc.currency || loc.business?.currency || '').toUpperCase() };
 }

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import NotificationCenter from '@/components/NotificationCenter';
-import { IconLogout } from '@/components/Icons';
+import { IconLogout, IconSparkle } from '@/components/Icons';
 
 export default function TopBar({ name, email }: { name: string; email: string }) {
   const path = usePathname();
@@ -25,6 +25,7 @@ export default function TopBar({ name, email }: { name: string; email: string })
             <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
             <div className="absolute right-0 top-13 z-40 w-64 rounded-2xl border border-line bg-panel p-2 shadow-2xl shadow-black/50">
               <p className="px-3 pb-2 pt-1.5 text-sm"><span className="block font-medium">{name}</span><span className="block truncate text-muted">{email}</span></p>
+              <Link href="/settings/ai" onClick={() => setMenu(false)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-muted hover:bg-card hover:text-fg"><IconSparkle size={18} /> AI settings & usage</Link>
               <form action="/auth/signout" method="post">
                 <button className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-muted hover:bg-card hover:text-fg"><IconLogout size={18} /> Sign out</button>
               </form>

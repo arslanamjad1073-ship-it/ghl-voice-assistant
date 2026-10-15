@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IconSparkle, IconSend, IconAlert, IconCheck, IconMail, IconChat } from '@/components/Icons';
 import { renderEmail } from '@/lib/emailTemplate';
+import { SendAsSelect, defaultSender, type Meta } from '@/components/assist/ui';
 
 export type Channel = 'sms' | 'email' | 'facebook' | 'instagram';
 export interface ChannelState { available: boolean; reason?: string; closesAt?: string }
@@ -16,9 +17,9 @@ const field = 'w-full rounded-2xl border border-line bg-card px-4 text-[15px] te
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 export default function FollowupComposer({
-  subaccountId, contactId, contactName, senderName, states, draft: initialDraft, lastLeadChannel, onSent
+  subaccountId, contactId, contactName, senderName: myName, userEmail = '', states, draft: initialDraft, lastLeadChannel, onSent
 }: {
-  subaccountId: string; contactId: string; contactName: string; senderName: string;
+  subaccountId: string; contactId: string; contactName: string; senderName: string; userEmail?: string;
   states: Record<Channel, ChannelState>; draft: Draft | null; lastLeadChannel?: string; onSent: () => void;
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
@@ -37,6 +38,18 @@ export default function FollowupComposer({
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [preview, setPreview] = useState(false);
   const [branding, setBranding] = useState<unknown>(null);
+  const [users, setUsers] = useState<Meta['users']>([]);
+  const [fromId, setFromId] = useState('');
+  const fromName = users.find((u) => u.id === fromId)?.name || '';
+  const senderName = fromName || myName;
+
+  // Team members for "Send as"
+  useEffect(() => {
+    fetch('/api/ghl/meta?subaccount=' + subaccountId).then((r) => r.json()).then((d) => {
+      const list: Meta['users'] = Array.isArray(d.users) ? d.users : [];
+      setUsers(list); setFromId(defaultSender(list, '', userEmail));
+    }).catch(() => {});
+  }, [subaccountId, userEmail]);
 
   // Branding for the email preview (loaded once per sub-account)
   useEffect(() => {
@@ -66,12 +79,12 @@ export default function FollowupComposer({
     try {
       const r = await fetch('/api/leads/send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subaccountId, contactId, channel, subject: isEmail ? subject : undefined, body: text, aiSuggested: !!draft && !draft.error, edited, confirm })
+        body: JSON.stringify({ subaccountId, contactId, channel, subject: isEmail ? subject : undefined, body: text, fromUserId: fromId, fromName, aiSuggested: !!draft && !draft.error, edited, confirm })
       });
       const d = await r.json();
       if (r.status === 409 && d.warning) { setWarning(d.warning); return; }
       if (!r.ok) throw new Error(d.error || 'Could not send');
-      setResult({ ok: true, text: `${LABEL[channel]} sent to ${contactName}.` });
+      setResult({ ok: true, text: `${LABEL[channel]} sent to ${contactName}${fromName ? ' as ' + fromName : ''}.` });
       onSent();
     } catch (e) { setResult({ ok: false, text: (e as Error).message }); }
     finally { setSending(false); }
@@ -117,6 +130,7 @@ export default function FollowupComposer({
       {draft?.error && <p className="mt-3 rounded-2xl bg-bad/10 px-4 py-3 text-sm text-bad">AI suggestion failed: {draft.error}. You can still write the message yourself.</p>}
 
       <div className="mt-4 space-y-3">
+        {users.length > 0 && <SendAsSelect users={users} value={fromId} onChange={setFromId} />}
         {isEmail && (
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" aria-label="Email subject" className={field + ' h-12'} />
         )}

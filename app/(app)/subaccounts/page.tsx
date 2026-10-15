@@ -14,11 +14,8 @@ const SCOPES = [
 
 const input = 'h-12 w-full rounded-2xl border border-line bg-card px-4 text-[15px] text-fg placeholder:text-faint outline-none transition focus:border-cyan focus:ring-3 focus:ring-cyan/20';
 
-interface Form {
-  name: string; location_id: string; ghl_token: string; timezone: string; currency: string;
-  invoice_live_mode: boolean; invoice_sender_name: string; notify_webhook_url: string; voice_enabled: boolean;
-}
-const EMPTY: Form = { name: '', location_id: '', ghl_token: '', timezone: '', currency: 'USD', invoice_live_mode: true, invoice_sender_name: '', notify_webhook_url: '', voice_enabled: false };
+interface Form { name: string; location_id: string; ghl_token: string; notify_webhook_url: string; voice_enabled: boolean }
+const EMPTY: Form = { name: '', location_id: '', ghl_token: '', notify_webhook_url: '', voice_enabled: false };
 
 function Field({ label, hint, children }: { label: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -49,9 +46,7 @@ export default function SubaccountsPage() {
   function openNew() { setForm(EMPTY); setEditing('new'); setError(''); setNotice(''); }
   function openEdit(s: SubaccountPublic) {
     setForm({
-      name: s.name, location_id: s.location_id, ghl_token: '', timezone: s.timezone, currency: s.currency,
-      invoice_live_mode: s.invoice_live_mode, invoice_sender_name: s.invoice_sender_name || '', notify_webhook_url: s.notify_webhook_url || '',
-      voice_enabled: !!s.voice_enabled
+      name: s.name, location_id: s.location_id, ghl_token: '', notify_webhook_url: s.notify_webhook_url || '', voice_enabled: !!s.voice_enabled
     });
     setEditing(s); setError(''); setNotice('');
   }
@@ -124,30 +119,6 @@ export default function SubaccountsPage() {
                 required={editing === 'new'} placeholder="pit-xxxxxxxx-xxxx-…" autoComplete="new-password" />
             </Field>
 
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Timezone" hint="IANA name, e.g. Asia/Karachi or America/New_York. Blank = from GHL.">
-                <input className={input} value={form.timezone} onChange={(e) => set('timezone', e.target.value)} placeholder="Asia/Karachi" list="tz-list" />
-              </Field>
-              <Field label="Invoice currency">
-                <input className={input} value={form.currency} onChange={(e) => set('currency', e.target.value.toUpperCase())} maxLength={3} placeholder="USD" />
-              </Field>
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Invoice sender" hint="Team member invoices are sent from. Blank = first admin.">
-                <input className={input} value={form.invoice_sender_name} onChange={(e) => set('invoice_sender_name', e.target.value)} placeholder="Ali Behraz" />
-              </Field>
-              <Field label="Invoice mode">
-                <button type="button" onClick={() => set('invoice_live_mode', !form.invoice_live_mode)} aria-pressed={form.invoice_live_mode}
-                  className="flex h-12 w-full items-center justify-between rounded-2xl border border-line bg-card px-4 text-[15px]">
-                  {form.invoice_live_mode ? 'Live (real payments)' : 'Test mode'}
-                  <span className={`relative h-6 w-11 rounded-full transition ${form.invoice_live_mode ? 'bg-cyan' : 'bg-card-2'}`}>
-                    <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${form.invoice_live_mode ? 'left-[22px]' : 'left-0.5'}`} />
-                  </span>
-                </button>
-              </Field>
-            </div>
-
             <Field label="Nova voice (optional add-on)" hint="Lets the team also talk to Nova by voice in this sub-account. Needs the Voximplant setup in the README.">
               <button type="button" onClick={() => set('voice_enabled', !form.voice_enabled)} aria-pressed={form.voice_enabled}
                 className="flex h-12 w-full items-center justify-between rounded-2xl border border-line bg-card px-4 text-[15px]">
@@ -158,9 +129,13 @@ export default function SubaccountsPage() {
               </button>
             </Field>
 
-            <Field label="Team notification webhook URL" hint="Inbound Webhook trigger of a GHL workflow that sends internal notifications. Optional.">
-              <input className={input} type="url" value={form.notify_webhook_url} onChange={(e) => set('notify_webhook_url', e.target.value)} placeholder="https://services.leadconnectorhq.com/hooks/…" />
-            </Field>
+            {form.voice_enabled && (
+              <Field label="Team notification webhook URL (voice only)" hint="Optional. Inbound Webhook trigger of a GHL workflow Nova's voice agent can use to alert the team.">
+                <input className={input} type="url" value={form.notify_webhook_url} onChange={(e) => set('notify_webhook_url', e.target.value)} placeholder="https://services.leadconnectorhq.com/hooks/…" />
+              </Field>
+            )}
+
+            <p className="text-xs leading-relaxed text-muted">Timezone and name come from GHL. Who a message or invoice is sent from, currency and invoice mode are picked each time you send.</p>
 
             {error && <p className="rounded-2xl bg-bad/10 px-4 py-3 text-sm text-bad">{error}</p>}
 
@@ -181,10 +156,6 @@ export default function SubaccountsPage() {
             <p className="mt-4 text-xs text-muted">Voximplant settings are shared by all sub-accounts and live in the app&apos;s environment variables, so nothing else is needed here.</p>
           </aside>
 
-          <datalist id="tz-list">
-            {['Asia/Karachi', 'Asia/Dubai', 'Asia/Kolkata', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto', 'Australia/Sydney', 'UTC']
-              .map((t) => <option key={t} value={t} />)}
-          </datalist>
         </form>
       )}
 
@@ -199,7 +170,7 @@ export default function SubaccountsPage() {
                 {s.id === sa.selected && <span className="shrink-0 rounded-full bg-cyan/15 px-2.5 py-0.5 text-xs font-medium text-cyan">Active</span>}
               </div>
               <p className="mt-0.5 truncate font-mono text-xs text-muted">{s.location_id}</p>
-              <p className="mt-2 text-sm text-muted">{s.timezone} · {s.currency} · {s.invoice_live_mode ? 'Live invoices' : 'Test invoices'}{s.voice_enabled ? ' · Voice on' : ''}{s.notify_webhook_url ? ' · Notifications on' : ''}</p>
+              <p className="mt-2 text-sm text-muted">{s.timezone}{s.voice_enabled ? ' · Voice on' : ' · Prompts only'}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {s.id !== sa.selected && (
                   <button onClick={() => sa.setSelected(s.id)} className="h-9 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">Use this one</button>

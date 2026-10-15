@@ -7,7 +7,7 @@ import ActivityItem from '@/components/ActivityItem';
 import Assistant from '@/components/assist/Assistant';
 import { IconPlus } from '@/components/Icons';
 
-export default function HomeView({ name }: { name: string; email?: string }) {
+export default function HomeView({ name, email = '' }: { name: string; email?: string }) {
   const sa = useSubaccounts();
   const [recent, setRecent] = useState<Activity[] | null>(null);
 
@@ -49,7 +49,7 @@ export default function HomeView({ name }: { name: string; email?: string }) {
           ) : sa.error ? (
             <p className="rounded-2xl bg-bad/10 px-4 py-3 text-sm text-bad">{sa.error}</p>
           ) : sa.current ? (
-            <Assistant subaccountId={sa.current.id} subaccountName={sa.current.name} senderName={name}
+            <Assistant subaccountId={sa.current.id} subaccountName={sa.current.name} senderName={name} userEmail={email}
               voiceEnabled={!!sa.current.voice_enabled} onDone={loadRecent} />
           ) : (
             <Link href="/subaccounts" className="flex items-center gap-3 rounded-2xl border border-dashed border-line p-6 text-muted hover:text-fg">

@@ -18,7 +18,8 @@ export async function POST(req: Request) {
 
   try {
     const meta = await getMeta(sa);
-    const p = await parsePrompt(String(prompt), meta);
+    const track = { userId: auth.user.id, subaccountId: sa.id };
+    const p = await parsePrompt(String(prompt), meta, { feature: 'prompt_parse', ...track });
     const contacts = p.contact_query ? await searchContacts(sa, p.contact_query).catch(() => []) : [];
     const q = p.contact_query.toLowerCase();
     const exact = contacts.find((c) => c.email.toLowerCase() === q || (q.replace(/\D/g, '').length >= 7 && c.phone.replace(/\D/g, '').endsWith(q.replace(/\D/g, '').slice(-9))));
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     if (p.write_instruction && ['send_email', 'send_sms', 'add_note'].includes(p.action)) {
       const transcript = contact ? await getTranscript(sa, contact.id, 60).then((t) => transcriptText(t.messages)).catch(() => '') : '';
       const w = await writeContent(p.action === 'send_email' ? 'email' : p.action === 'send_sms' ? 'sms' : 'note', p.write_instruction,
-        { contactName: contact?.name, company: sa.name, sender: displayName(auth.user), transcript });
+        { contactName: contact?.name, company: sa.name, sender: displayName(auth.user), transcript }, { feature: 'ai_write', ...track });
       p.fields = { ...p.fields, ...(w.subject ? { subject: w.subject } : {}), body: w.body, ai_written: true };
     }
     return NextResponse.json({ ...p, contacts: contacts.slice(0, 8), contact, meta });

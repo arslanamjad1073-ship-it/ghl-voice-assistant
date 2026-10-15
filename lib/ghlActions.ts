@@ -211,7 +211,7 @@ export async function bookAppointment(sa: SubaccountFull, contactId: string, a: 
 
 export interface InvoiceInput {
   items: { name: string; quantity: number; unitPrice: number; description?: string }[];
-  currency: string; dueDate: string; title?: string; notes?: string; sendVia: 'email' | 'sms' | 'both' | 'none'; liveMode: boolean;
+  currency: string; dueDate: string; title?: string; notes?: string; sendVia: 'email' | 'sms' | 'both' | 'none'; liveMode: boolean; senderUserId?: string;
 }
 export async function createInvoice(sa: SubaccountFull, contactId: string, inv: InvoiceInput, meta: Meta) {
   const c = await ghl<{ contact?: Record<string, string> }>(sa.ghl_token, '/contacts/' + encodeURIComponent(contactId)).then((d) => (d.contact || d) as Record<string, string>);
@@ -246,7 +246,7 @@ export async function createInvoice(sa: SubaccountFull, contactId: string, inv: 
   const total = items.reduce((s, i) => s + i.unitPrice * (i.quantity || 1), 0);
   let sent = false, sendError = '';
   if (inv.sendVia !== 'none' && id) {
-    const sender = (sa.invoice_sender_name && meta.users.find((u) => u.name.toLowerCase() === sa.invoice_sender_name!.toLowerCase()))
+    const sender = (inv.senderUserId && meta.users.find((u) => u.id === inv.senderUserId))
       || meta.users.find((u) => /admin/i.test(u.role)) || meta.users[0];
     try {
       if (!sender) throw new Error('no team member to send it from');

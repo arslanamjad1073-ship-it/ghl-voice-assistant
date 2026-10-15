@@ -29,13 +29,13 @@ Voximplant scenario (voximplant/scenario.js): Gemini Live + GHL tools
 ```
 
 ## Prompt command center (Home)
-Type what you want, e.g. *"Send an email to peter@example.com thanking him for the call"*. Gemini works out the action
+Type what you want, e.g. *"Send an email to peter@example.com thanking him for the call"*. The AI set up on the AI settings page works out the action
 (`/api/assist/parse`) and Nova shows a pre-filled form you review and submit. Everything runs through the GHL API and lands in History.
 
 | Prompt | Form |
 |---|---|
-| send an email / SMS | contact (search or create), subject and body, "Ask AI to write it", email preview with branding, 5-minute resend warning |
-| create an invoice | items (name, qty, price), currency, due date, send by email / SMS / both / draft |
+| send an email / SMS | contact (search or create), **Send as** (GHL team member), subject and body, "Ask AI to write it", email preview with branding, 5-minute resend warning |
+| create an invoice | items (name, qty, price), currency, due date, send by email / SMS / both / draft, **Send as**, Live / Test mode |
 | add / remove tags | tag chips with the account's existing tags, contact's current tags |
 | create / move an opportunity | contact's existing deals, pipeline and stage dropdowns from GHL, status, value |
 | book an appointment | calendar dropdown, week view: available (cyan), booked (purple), blocked (striped red), selected |
@@ -43,6 +43,16 @@ Type what you want, e.g. *"Send an email to peter@example.com thanking him for t
 | summarize a lead | opens the Leads page for that contact |
 
 Quick buttons under the prompt open the same forms empty. Account data for the dropdowns comes from `/api/ghl/meta`.
+"Send as" defaults to the team member named in the prompt, else the GHL user with your login email, else an admin.
+
+Adding a sub-account only needs the Location ID and Private Integration token; name, timezone and currency are read from GHL.
+
+## AI settings & usage (account menu › AI settings & usage, `/settings/ai`)
+Admins add an API key for Google Gemini, OpenAI, Anthropic Claude, OpenRouter or any OpenAI-compatible endpoint. The key is
+tested before it is saved; one key is active at a time and every text feature (prompt parsing, AI write, lead summaries,
+follow-ups, questions) uses it. Every request logs input/output tokens to `llm_usage`; cost = tokens × the price per
+1M tokens entered for the key (Claude prices are pre-filled; OpenRouter reports the exact cost). The voice agent runs in
+Voximplant and is not counted. Without a saved key, `GEMINI_API_KEY` from the environment is used.
 
 **Voice is an optional add-on**, off by default. An admin turns it on per sub-account (Accounts › Edit › Nova voice); the Talk tab
 and "Talk instead" button only appear when it is on.
@@ -84,7 +94,7 @@ In the Supabase dashboard:
 | `VOX_PASSWORD` | the Voximplant user's password |
 | `VOX_CALL_NUMBER` | `crm` |
 | `SCENARIO_SECRET` | output of `openssl rand -hex 32` |
-| `GEMINI_API_KEY` | same Gemini key as in Voximplant (used by the Leads page) |
+| `GEMINI_API_KEY` | optional fallback when no key is saved on the AI settings page |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | from `npx web-push generate-vapid-keys` (push notifications) |
 | `VAPID_SUBJECT` | `mailto:` + your email |
 

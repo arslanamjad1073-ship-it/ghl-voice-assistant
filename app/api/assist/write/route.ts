@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       const [c, t] = await Promise.all([getContact(sa, b.contactId), getTranscript(sa, b.contactId, 60).catch(() => null)]);
       name = c.name; transcript = t ? transcriptText(t.messages) : '';
     }
-    return NextResponse.json(await writeContent(kind, String(b.instruction), { contactName: name, company: sa.name, sender: displayName(auth.user), transcript }));
+    return NextResponse.json(await writeContent(kind, String(b.instruction), { contactName: name, company: sa.name, sender: displayName(auth.user), transcript }, { feature: 'ai_write', userId: auth.user.id, subaccountId: sa.id }));
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }

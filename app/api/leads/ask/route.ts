@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth';
 import { getSubaccount, getTranscript, transcriptText } from '@/lib/ghl';
-import { gemini, type Turn } from '@/lib/gemini';
+import { llm, type Turn } from '@/lib/llm';
 import { ASK_PROMPT } from '@/lib/leadPrompts';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   try {
     const t = await getTranscript(sa, String(b.contactId));
     const system = ASK_PROMPT + '\n\nTranscript (oldest first):\n' + (transcriptText(t.messages) || '[no messages]');
-    const answer = await gemini(system, [...history, { role: 'user', text: question }]);
+    const answer = await llm(system, [...history, { role: 'user', text: question }], { track: { feature: 'lead_question', userId: auth.user.id, subaccountId: sa.id } });
     return NextResponse.json({ answer });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });

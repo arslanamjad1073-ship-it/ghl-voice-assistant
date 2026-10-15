@@ -234,8 +234,10 @@ export function lastOutbound(messages: TranscriptMessage[]) {
   return null;
 }
 
-export async function sendMessage(sa: SubaccountSecret, contactId: string, channel: Channel, text: string, email?: { subject: string; html: string }) {
+// userId = the GHL team member the message is sent on behalf of (blank = GHL's default)
+export async function sendMessage(sa: SubaccountSecret, contactId: string, channel: Channel, text: string, email?: { subject: string; html: string }, userId?: string) {
   const body: Record<string, unknown> = { type: GHL_TYPE[channel], contactId, message: text };
+  if (userId) body.userId = userId;
   if (channel === 'email' && email) Object.assign(body, { subject: email.subject, html: email.html });
   const d = await ghl<{ messageId?: string; id?: string; emailMessageId?: string }>(sa.ghl_token, '/conversations/messages', { method: 'POST', body, version: CONV_V });
   return d.messageId || d.emailMessageId || d.id || '';

@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!sa || !contactId) return NextResponse.json({ error: 'Sub-account and contact are required' }, { status: 400 });
   try {
     const [contact, t] = await Promise.all([getContact(sa, contactId), getTranscript(sa, contactId)]);
-    return NextResponse.json(await draftFollowup(contact, transcriptText(t.messages), { senderName: displayName(auth.user), company: sa.name, timezone: sa.timezone }));
+    return NextResponse.json(await draftFollowup(contact, transcriptText(t.messages), { senderName: displayName(auth.user), company: sa.name, timezone: sa.timezone }, { feature: 'followup_draft', userId: auth.user.id, subaccountId: sa.id }));
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }
