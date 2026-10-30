@@ -5,7 +5,7 @@ import type { Contact } from '@/lib/ghl';
 
 export interface FollowupDraft { short: string; email_subject: string; email_body: string }
 
-export async function draftFollowup(contact: Contact, transcript: string, ctx: { senderName: string; company: string; timezone: string }, track?: Track): Promise<FollowupDraft> {
+export async function draftFollowup(contact: Contact, transcript: string, ctx: { senderName: string; company: string; timezone: string }, track: Track): Promise<FollowupDraft> {
   const text = await llm(FOLLOWUP_PROMPT, [{
     role: 'user',
     text: 'Lead: ' + contact.name + '\nWe are: ' + ctx.company + ' (writer: ' + ctx.senderName + ')\nTimezone: ' + ctx.timezone +

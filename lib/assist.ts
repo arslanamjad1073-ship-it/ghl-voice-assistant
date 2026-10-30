@@ -37,7 +37,7 @@ Rules:
 - Convert relative dates ("tomorrow", "next Monday", "the 15th") using today's date below. Never invent prices or amounts.
 - reply: one short sentence telling the user what the form is for, e.g. "Here's an email to Peter John. Review and send."`;
 
-export async function parsePrompt(prompt: string, meta: Meta, track?: Track): Promise<Parsed> {
+export async function parsePrompt(prompt: string, meta: Meta, track: Track): Promise<Parsed> {
   const context = [
     'Today: ' + meta.today + ' (' + new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: meta.timezone }) + '), timezone ' + meta.timezone,
     'Default currency: ' + meta.currency,
@@ -67,7 +67,7 @@ Return JSON only.
 - kind "sms": {"body": "..."} under 300 characters, no sign-off.
 - kind "note": {"body": "..."} an internal CRM note in clean complete sentences.`;
 
-export async function writeContent(kind: 'email' | 'sms' | 'note', instruction: string, ctx: { contactName?: string; company: string; sender: string; transcript?: string }, track?: Track) {
+export async function writeContent(kind: 'email' | 'sms' | 'note', instruction: string, ctx: { contactName?: string; company: string; sender: string; transcript?: string }, track: Track) {
   const text = await llm(WRITE_PROMPT, [{
     role: 'user',
     text: `kind: ${kind}\nInstruction: ${instruction}\nContact: ${ctx.contactName || 'unknown'}\nWe are: ${ctx.company} (writer: ${ctx.sender})` +

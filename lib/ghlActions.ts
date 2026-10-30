@@ -7,12 +7,12 @@ import { displayName } from '@/lib/auth';
 const CAL_V = '2021-04-15';
 
 export interface SubaccountFull extends SubaccountSecret {
-  currency: string; invoice_live_mode: boolean; invoice_sender_name: string | null; voice_enabled: boolean;
+  org_id: string; currency: string; invoice_live_mode: boolean; invoice_sender_name: string | null; voice_enabled: boolean;
 }
 
 export async function getSubaccountFull(id: string): Promise<SubaccountFull | null> {
   const { data } = await supabaseAdmin().from('subaccounts')
-    .select('id,name,location_id,ghl_token,timezone,currency,invoice_live_mode,invoice_sender_name,voice_enabled').eq('id', id).maybeSingle();
+    .select('id,org_id,name,location_id,ghl_token,timezone,currency,invoice_live_mode,invoice_sender_name,voice_enabled').eq('id', id).maybeSingle();
   return data as SubaccountFull | null;
 }
 
@@ -130,7 +130,7 @@ export async function getWeek(sa: SubaccountFull, calendarId: string, startDate:
 // ---------- activity log ----------
 export async function logActivity(sa: SubaccountFull, user: User, a: { action: string; ok: boolean; message: string; contact?: Contact | null; details?: object }) {
   await supabaseAdmin().from('activities').insert({
-    subaccount_id: sa.id, subaccount_name: sa.name, user_id: user.id, user_email: user.email, user_name: displayName(user),
+    org_id: sa.org_id, subaccount_id: sa.id, subaccount_name: sa.name, user_id: user.id, user_email: user.email, user_name: displayName(user),
     action: a.action, status: a.ok ? 'success' : 'error', message: a.message.slice(0, 1000),
     contact_id: a.contact?.id || null, contact_name: a.contact?.name || null, details: { ...(a.details || {}), source: 'prompt' }
   });

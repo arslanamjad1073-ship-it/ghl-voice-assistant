@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireAccess, can } from '@/lib/access';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { callProvider, clearProviderCache, DEFAULT_MODELS, KNOWN_PRICES, type Provider, type ProviderConfig } from '@/lib/llm';
 
@@ -7,24 +7,40 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const PROVIDERS: Provider[] = ['gemini', 'openai', 'anthropic', 'openrouter', 'custom'];
-const COLS = 'id,provider,label,api_key,model,base_url,price_in_per_m,price_out_per_m,is_active,updated_at';
+const COLS = 'id,provider,label,api_key,model,base_url,price_in_per_m,price_out_per_m,updated_at';
 const hint = (k: string) => (k ? '••••' + k.slice(-4) : '');
 const num = (v: unknown) => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? null : Number(v));
 
-function toPublic(r: Record<string, unknown>) {
+function toPublic(r: Record<string, unknown>, activeId: number | null) {
   const { api_key, ...rest } = r;
-  return { ...rest, key_hint: hint(String(api_key || '')) };
+  return { ...rest, is_active: r.id === activeId, key_hint: hint(String(api_key || '')) };
 }
 
-// GET -> saved providers (keys masked), whether the env Gemini key is the fallback, known prices
+async function activeId(orgId: string) {
+  const { data } = await supabaseAdmin().from('organizations').select('active_llm_provider_id').eq('id', orgId).maybeSingle();
+  return (data?.active_llm_provider_id as number | null) ?? null;
+}
+async function setActive(orgId: string, id: number | null) {
+  await supabaseAdmin().from('organizations').update({ active_llm_provider_id: id }).eq('id', orgId);
+  clearProviderCache(orgId);
+}
+
+// GET -> this organization's saved providers (keys masked). Members without the AI keys permission
+// only see which AI is active.
 export async function GET() {
-  const auth = await requireUser();
+  const auth = await requireAccess();
   if (auth.error) return auth.error;
-  const { data } = await supabaseAdmin().from('llm_providers').select(COLS).order('created_at');
+  const { access } = auth;
+  const canManage = can(access, 'manage_ai');
+  if (!canManage && !can(access, 'view_usage')) return NextResponse.json({ error: 'You do not have permission for this. Ask the owner.' }, { status: 403 });
+  const act = await activeId(access.orgId);
+  const { data } = await supabaseAdmin().from('llm_providers').select(COLS).eq('org_id', access.orgId).order('created_at');
+  const items = (data || []).map((r) => toPublic(r, act));
   return NextResponse.json({
-    items: (data || []).map(toPublic),
+    items: canManage ? items : items.filter((i) => i.is_active).map(({ key_hint: _k, ...i }) => ({ ...i, key_hint: '' })),
     envFallback: !!process.env.GEMINI_API_KEY,
-    canManage: isAdmin(auth.user.email),
+    canManage,
+    canViewUsage: can(access, 'view_usage'),
     defaults: DEFAULT_MODELS,
     knownPrices: KNOWN_PRICES
   });
@@ -33,8 +49,9 @@ export async function GET() {
 // POST { id?, provider, label?, apiKey?, model, baseUrl?, priceIn?, priceOut?, activate? }
 // Tests the key with a tiny request, then saves it (and makes it active when asked).
 export async function POST(req: Request) {
-  const auth = await requireUser({ admin: true });
+  const auth = await requireAccess({ perm: 'manage_ai' });
   if (auth.error) return auth.error;
+  const { access } = auth;
   const b = await req.json().catch(() => ({}));
   const db = supabaseAdmin();
   const provider = String(b.provider || '') as Provider;
@@ -46,7 +63,7 @@ export async function POST(req: Request) {
 
   let apiKey = String(b.apiKey || '').trim();
   if (!apiKey && b.id) {
-    const { data } = await db.from('llm_providers').select('api_key').eq('id', b.id).maybeSingle();
+    const { data } = await db.from('llm_providers').select('api_key').eq('id', b.id).eq('org_id', access.orgId).maybeSingle();
     apiKey = data?.api_key || '';
   }
   if (!apiKey) return NextResponse.json({ error: 'Paste the API key' }, { status: 400 });
@@ -60,46 +77,43 @@ export async function POST(req: Request) {
 
   const row = {
     provider, model, api_key: apiKey, base_url: provider === 'custom' ? baseUrl : null, label: String(b.label || '').trim() || null,
-    price_in_per_m: num(b.priceIn), price_out_per_m: num(b.priceOut), updated_by: auth.user.id, updated_at: new Date().toISOString()
+    price_in_per_m: num(b.priceIn), price_out_per_m: num(b.priceOut), updated_by: access.user.id, updated_at: new Date().toISOString()
   };
   let id = Number(b.id) || 0;
   if (id) {
-    const { error } = await db.from('llm_providers').update(row).eq('id', id);
+    const { data, error } = await db.from('llm_providers').update(row).eq('id', id).eq('org_id', access.orgId).select('id');
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data?.length) return NextResponse.json({ error: 'Key not found' }, { status: 404 });
   } else {
-    const { data, error } = await db.from('llm_providers').insert(row).select('id').single();
+    const { data, error } = await db.from('llm_providers').insert({ ...row, org_id: access.orgId }).select('id').single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     id = data.id;
   }
-  if (b.activate !== false) {
-    await db.from('llm_providers').update({ is_active: false }).eq('is_active', true).neq('id', id);
-    await db.from('llm_providers').update({ is_active: true }).eq('id', id);
-  }
-  clearProviderCache();
+  if (b.activate !== false) await setActive(access.orgId, id);
+  clearProviderCache(access.orgId);
   return NextResponse.json({ ok: true, id });
 }
 
 // PATCH { id, activate: true } -> switch the active provider
 export async function PATCH(req: Request) {
-  const auth = await requireUser({ admin: true });
+  const auth = await requireAccess({ perm: 'manage_ai' });
   if (auth.error) return auth.error;
   const { id } = await req.json().catch(() => ({}));
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-  const db = supabaseAdmin();
-  await db.from('llm_providers').update({ is_active: false }).eq('is_active', true).neq('id', id);
-  const { error } = await db.from('llm_providers').update({ is_active: true }).eq('id', id);
-  clearProviderCache();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data } = await supabaseAdmin().from('llm_providers').select('id').eq('id', id).eq('org_id', auth.access.orgId).maybeSingle();
+  if (!data) return NextResponse.json({ error: 'Key not found' }, { status: 404 });
+  await setActive(auth.access.orgId, data.id);
   return NextResponse.json({ ok: true });
 }
 
 // DELETE ?id=
 export async function DELETE(req: Request) {
-  const auth = await requireUser({ admin: true });
+  const auth = await requireAccess({ perm: 'manage_ai' });
   if (auth.error) return auth.error;
-  const id = new URL(req.url).searchParams.get('id');
+  const id = Number(new URL(req.url).searchParams.get('id'));
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-  await supabaseAdmin().from('llm_providers').delete().eq('id', id);
-  clearProviderCache();
+  if ((await activeId(auth.access.orgId)) === id) await setActive(auth.access.orgId, null);
+  await supabaseAdmin().from('llm_providers').delete().eq('id', id).eq('org_id', auth.access.orgId);
+  clearProviderCache(auth.access.orgId);
   return NextResponse.json({ ok: true });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { requireAccess } from '@/lib/access';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -7,15 +7,21 @@ export const dynamic = 'force-dynamic';
 const COLS = 'id,created_at,action,status,message,contact_name,user_name,user_email,subaccount_id,subaccount_name,details';
 
 // GET /api/activity?subaccount=&status=&q=&from=YYYY-MM-DD&to=YYYY-MM-DD&before=<iso>&limit=
+// Only this organization's history, and only for the sub-accounts the member can access.
 export async function GET(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireAccess();
   if (auth.error) return auth.error;
+  const { access } = auth;
   const p = new URL(req.url).searchParams;
   const limit = Math.min(Math.max(Number(p.get('limit')) || 30, 1), 100);
 
-  let q = supabaseAdmin().from('activities').select(COLS).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
   const sub = p.get('subaccount');
-  if (sub) q = q.eq('subaccount_id', sub);
+  if (sub && !access.subaccountIds.includes(sub)) return NextResponse.json({ items: [], hasMore: false });
+  const ids = sub ? [sub] : access.subaccountIds;
+  if (!ids.length) return NextResponse.json({ items: [], hasMore: false });
+
+  let q = supabaseAdmin().from('activities').select(COLS).eq('org_id', access.orgId).in('subaccount_id', ids)
+    .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
   const status = p.get('status');
   if (status === 'success' || status === 'error') q = q.eq('status', status);
   const search = (p.get('q') || '').trim().replace(/[%_,()]/g, ' ');

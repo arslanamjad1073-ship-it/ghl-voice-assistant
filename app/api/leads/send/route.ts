@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { requireUser, displayName } from '@/lib/auth';
+import { displayName } from '@/lib/auth';
+import { requireSubaccount } from '@/lib/access';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { getSubaccount, getContact, getTranscript, channelStates, lastOutbound, sendMessage, CHANNEL_LABEL, type Channel } from '@/lib/ghl';
+import { getContact, getTranscript, channelStates, lastOutbound, sendMessage, CHANNEL_LABEL, type Channel } from '@/lib/ghl';
 import { renderEmail } from '@/lib/emailTemplate';
 
 export const dynamic = 'force-dynamic';
@@ -13,8 +14,6 @@ const CHANNELS: Channel[] = ['sms', 'email', 'facebook', 'instagram'];
 // POST { subaccountId, contactId, channel, subject?, body, fromUserId?, fromName?, aiSuggested?, edited?, confirm? }
 // 409 { warning } when something was sent to this contact in the last 5 minutes and confirm is not set.
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth.error) return auth.error;
   const b = await req.json().catch(() => ({}));
   const channel = b.channel as Channel;
   const text = String(b.body || '').trim();
@@ -24,8 +23,11 @@ export async function POST(req: Request) {
   if (channel === 'email' && !subject) return NextResponse.json({ error: 'The email needs a subject' }, { status: 400 });
   if (channel !== 'email' && text.length > 1600) return NextResponse.json({ error: 'The message is too long (max 1600 characters)' }, { status: 400 });
 
-  const sa = await getSubaccount(String(b.subaccountId || ''));
-  if (!sa || !b.contactId) return NextResponse.json({ error: 'Sub-account and contact are required' }, { status: 400 });
+  const r = await requireSubaccount(b.subaccountId);
+  if (r.error) return r.error;
+  const { sa } = r;
+  const auth = { user: r.access.user };
+  if (!b.contactId) return NextResponse.json({ error: 'Choose a contact' }, { status: 400 });
   const db = supabaseAdmin();
 
   let contact, transcript;
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
   }
 
   const status = error ? 'failed' : 'sent';
-  const base = { subaccount_id: sa.id, subaccount_name: sa.name, user_id: auth.user.id, user_email: auth.user.email, user_name: sender };
+  const base = { org_id: sa.org_id, subaccount_id: sa.id, subaccount_name: sa.name, user_id: auth.user.id, user_email: auth.user.email, user_name: sender };
   await db.from('followups').insert({
     ...base, contact_id: contact.id, contact_name: contact.name, channel, subject: channel === 'email' ? subject : null, body: text,
     ai_suggested: !!b.aiSuggested, edited: !!b.edited, status, error: error || null, ghl_message_id: messageId || null

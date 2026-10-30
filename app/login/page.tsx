@@ -1,7 +1,8 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { sessionFromUrl } from '@/lib/authFromUrl';
 import Orb from '@/components/Orb';
 
 type Mode = 'signin' | 'signup' | 'magic';
@@ -23,6 +24,14 @@ function LoginForm() {
       ? { text: 'This email is not on the allowed list. Ask an admin for access.', bad: true }
       : urlError ? { text: urlError, bad: true } : null
   );
+
+  // Sign-in links that land here with tokens in the URL
+  useEffect(() => {
+    sessionFromUrl().then(async () => {
+      const { data: { user } } = await supabaseBrowser().auth.getUser();
+      if (user) { router.replace('/'); router.refresh(); }
+    });
+  }, [router]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

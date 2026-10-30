@@ -41,3 +41,5 @@ export const IconLogout = make(<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" />)
 export const IconSearch = make(<><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>);
 export const IconSparkle = make(<path d="M12 3c.8 4.6 2.4 6.2 7 7-4.6.8-6.2 2.4-7 7-.8-4.6-2.4-6.2-7-7 4.6-.8 6.2-2.4 7-7z" />);
 export const IconCheck = make(<path d="m5 12.5 4.5 4.5L19 7.5" />);
+export const IconShield = make(<><path d="M12 3 5 6v5.5c0 4.3 2.9 8 7 9.5 4.1-1.5 7-5.2 7-9.5V6z" /><path d="m9 12 2 2 4-4" /></>);
+export const IconCopy = make(<><rect x="8.5" y="8.5" width="12" height="12" rx="2.5" /><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5" /></>);

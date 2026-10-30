@@ -54,7 +54,7 @@ follow-ups, questions) uses it. Every request logs input/output tokens to `llm_u
 1M tokens entered for the key (Claude prices are pre-filled; OpenRouter reports the exact cost). The voice agent runs in
 Voximplant and is not counted. Without a saved key, `GEMINI_API_KEY` from the environment is used.
 
-**Voice is an optional add-on**, off by default. An admin turns it on per sub-account (Accounts › Edit › Nova voice); the Talk tab
+**Voice is an optional add-on**, off by default. Someone with the Sub-accounts permission turns it on per sub-account (Accounts › Edit › Nova voice); the Talk tab
 and "Talk instead" button only appear when it is on.
 
 ## How a call works
@@ -74,7 +74,8 @@ The tables are already created in your project (`ytuwpdsmdjwqmflthagg`). To recr
 In the Supabase dashboard:
 - **Authentication › URL Configuration**:
   - set **Site URL** to your Vercel URL
-  - add `https://YOUR-APP.vercel.app/auth/callback` to **Redirect URLs**
+  - add `https://YOUR-APP.vercel.app/**` to **Redirect URLs** (sign-in, confirmation and invite links)
+- **Optional, recommended for invites:** set up **custom SMTP** (Authentication › Emails). Supabase's built-in mailer only sends a few emails per hour; invite links can always be copied from the Team page instead.
 - **Authentication › Providers › Email**: keep it enabled. "Confirm email" is recommended.
 - **Optional:** in **Authentication › Policies**, turn on *leaked password protection*. The security advisor flags it.
 - **Project Settings › API keys**: copy the **secret / service_role** key into `SUPABASE_SERVICE_ROLE_KEY`.
@@ -88,8 +89,8 @@ In the Supabase dashboard:
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://ytuwpdsmdjwqmflthagg.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key (in `.env.example`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | secret key from Supabase (server only) |
-| `ALLOWED_EMAILS` | e.g. `you@company.com,@yourteam.com` (empty = anyone who signs up) |
-| `ADMIN_EMAILS` | who may manage sub-accounts (empty = all allowed users) |
+| `ALLOWED_EMAILS` | who may start a **new organization**, e.g. `you@company.com,@yourteam.com` (empty = anyone who signs up). Invited team members don't need it |
+| `APP_URL` | optional, public URL used in invite links |
 | `VOX_USER` / `VOX_APP` / `VOX_NODE` | `webuserr2` / `ghl-dialer.arslanamjad1073` / `NODE_2` |
 | `VOX_PASSWORD` | the Voximplant user's password |
 | `VOX_CALL_NUMBER` | `crm` |
@@ -109,7 +110,7 @@ In the Supabase dashboard:
    - `GHL_TOKEN` and `NOTIFY_WEBHOOK_URL` are only needed if the old GHL widget is still in use. Calls without a session token fall back to the `LEGACY` settings at the top of the scenario.
 
 ### 4. First run
-1. Open the app, create an account and confirm the email.
+1. Open the app, create an account and confirm the email. You land on **Welcome**: enter your business name to create your organization (you become its **Owner**).
 2. Go to **Sub-accounts › Add sub-account** and fill in:
    - **Location ID**
    - a **Private Integration token** with the scopes listed on the page
@@ -146,9 +147,33 @@ Web fonts (Poppins, Inter…) load in Apple Mail, iPhone and most Android apps. 
 picks a **fallback font** that those apps use (Outlook is forced to it, otherwise it would show Times New Roman). The branding preview
 has an *Apple Mail / phones* and a *Gmail / Outlook* view. Emails Nova sends by voice use the same branding and the caller's signature.
 
+## Organizations, roles and permissions (SaaS)
+Every business that uses Nova is an **organization**. Its sub-accounts, AI keys, usage, history, follow-ups and alerts are
+only visible inside it. One login belongs to one organization.
+
+| | Owner | Admin | User |
+|---|---|---|---|
+| Use Nova (prompts, leads, history, voice) | all sub-accounts | sub-accounts given | sub-accounts given |
+| Sub-accounts (add / edit / remove, alert setup) | ✅ | if allowed | if allowed |
+| AI keys | ✅ | if allowed | if allowed |
+| AI usage & cost | ✅ | if allowed | if allowed |
+| Email branding | ✅ | on by default | if allowed |
+| Team (invite and manage **users**) | ✅ | on by default | if allowed |
+| Add / change admins, rename, transfer ownership | ✅ | ❌ | ❌ |
+
+- **Team page** (shield button at the top): invite by email, pick the role, switch permissions on/off and choose sub-accounts
+  ("All sub-accounts" includes ones added later). The invite is emailed and the link can also be copied (valid 7 days).
+- Someone with the Team permission can only invite **users**, and only give permissions and sub-accounts they have themselves.
+- A member only sees the history, follow-ups, notifications and push alerts of their sub-accounts. Each sub-account has
+  its own email branding.
+- Disable a member to pause their access, or remove them; removing also ends their voice sessions and push subscriptions.
+- Every API route checks the organization, the permission and the sub-account on the server (`lib/access.ts`); the UI only
+  hides what a member can't use.
+- Tables: `organizations`, `memberships`, `member_subaccounts`, `invites` (`supabase/migrations/0006_organizations.sql`).
+
 ## Security notes
 - GHL tokens live only in Supabase. They're read with the service-role key on the server and never sent to the browser (the UI shows `••••abcd`).
-- All tables have RLS enabled with no policies, so the public anon key can't read them.
+- All tables have RLS enabled with no policies, so the public anon key can't read them. Each row carries its `org_id`, and the server filters by the member's organization and sub-accounts.
 - Scenario endpoints require `Authorization: Bearer SCENARIO_SECRET`. Session tokens expire after 1 hour.
 - **Rotate the Voximplant password** after testing, then update `VOX_PASSWORD` in Vercel. No code change is needed.
 

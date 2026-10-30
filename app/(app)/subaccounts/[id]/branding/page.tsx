@@ -2,6 +2,7 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { IconBack, IconCheck } from '@/components/Icons';
+import { useAccess } from '@/components/AccessProvider';
 import { FONTS, SAFE_FONTS, defaultBranding, renderEmail, type EmailBranding } from '@/lib/emailTemplate';
 
 const input = 'h-11 w-full rounded-xl border border-line bg-card px-3.5 text-[14.5px] text-fg placeholder:text-faint outline-none transition focus:border-cyan focus:ring-3 focus:ring-cyan/20';
@@ -37,6 +38,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
 
 export default function BrandingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const canEdit = useAccess().can('manage_branding');
   const [name, setName] = useState('');
   const [b, setB] = useState<EmailBranding | null>(null);
   const [saved, setSaved] = useState<string>('');
@@ -77,10 +79,12 @@ export default function BrandingPage({ params }: { params: Promise<{ id: string 
           <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Email branding</h1>
           <p className="text-sm text-muted">{name || '…'} · used for follow-up emails sent from Nova</p>
         </div>
-        <button onClick={save} disabled={!b || busy || !dirty}
-          className="h-11 rounded-full bg-cyan px-6 font-semibold text-cyan-ink hover:bg-[#7ddcf7] disabled:opacity-50">
-          {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}
-        </button>
+        {canEdit ? (
+          <button onClick={save} disabled={!b || busy || !dirty}
+            className="h-11 rounded-full bg-cyan px-6 font-semibold text-cyan-ink hover:bg-[#7ddcf7] disabled:opacity-50">
+            {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+          </button>
+        ) : <span className="rounded-full bg-card px-4 py-2 text-sm text-muted">View only</span>}
       </div>
 
       {msg && <p className={`mt-4 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm ${msg.ok ? 'bg-ok/10 text-ok' : 'bg-bad/10 text-bad'}`}>{msg.ok && <IconCheck size={18} />}{msg.text}</p>}

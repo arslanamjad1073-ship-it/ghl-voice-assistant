@@ -22,7 +22,7 @@ const pick = (o: Record<string, unknown>, ...keys: string[]) => {
 export async function POST(req: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
   const db = supabaseAdmin();
-  const { data: sa } = await db.from('subaccounts').select('id,name,location_id,ghl_token').eq('webhook_key', key).maybeSingle();
+  const { data: sa } = await db.from('subaccounts').select('id,org_id,name,location_id,ghl_token').eq('webhook_key', key).maybeSingle();
   if (!sa) return NextResponse.json({ error: 'Unknown webhook key' }, { status: 404 });
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -54,12 +54,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
   if (!dedupe) dedupe = contactId + ':' + preview.slice(0, 50) + ':' + Math.floor(Date.now() / 60000);
 
   const { error } = await db.from('notifications').insert({
-    subaccount_id: sa.id, subaccount_name: sa.name, contact_id: contactId, contact_name: name, channel, preview, dedupe_key: dedupe
+    org_id: sa.org_id, subaccount_id: sa.id, subaccount_name: sa.name, contact_id: contactId, contact_name: name, channel, preview, dedupe_key: dedupe
   });
   if (error?.code === '23505') return NextResponse.json({ ok: true, duplicate: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const [push] = await Promise.all([pushToSubscribers(sa.id, {
+  const [push] = await Promise.all([pushToSubscribers(sa.org_id, sa.id, {
     title: `${name} · ${channel}`,
     body: preview,
     url: `/leads?sa=${sa.id}&contact=${encodeURIComponent(contactId)}`,

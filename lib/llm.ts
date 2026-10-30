@@ -2,13 +2,13 @@ import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
-// One entry point for every AI feature. The active provider/key comes from the AI settings page
-// (llm_providers table); without one, GEMINI_API_KEY from the environment is used.
-// Every call records its token usage and cost in llm_usage.
+// One entry point for every AI feature. Each organization picks its own provider/key on the AI settings page
+// (llm_providers + organizations.active_llm_provider_id); without one, GEMINI_API_KEY from the environment is used.
+// Every call records its token usage and cost in llm_usage, per organization.
 
 export type Provider = 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'custom';
 export interface Turn { role: 'user' | 'model'; text: string }
-export interface Track { feature: string; userId?: string; subaccountId?: string }
+export interface Track { orgId: string; feature: string; userId?: string; subaccountId?: string }
 export interface ProviderConfig {
   id?: number; provider: Provider; apiKey: string; model: string; baseUrl?: string | null;
   priceIn?: number | null; priceOut?: number | null;
@@ -34,13 +34,18 @@ export const DEFAULT_MODELS: Record<Provider, string> = {
   custom: ''
 };
 
-let cached: { at: number; cfg: ProviderConfig | null } | null = null;
-export function clearProviderCache() { cached = null; }
+const cache = new Map<string, { at: number; cfg: ProviderConfig | null }>();
+export function clearProviderCache(orgId: string) { cache.delete(orgId); }
 
-export async function activeProvider(): Promise<ProviderConfig | null> {
-  if (cached && Date.now() - cached.at < 30000) return cached.cfg;
-  const { data } = await supabaseAdmin().from('llm_providers')
-    .select('id,provider,api_key,model,base_url,price_in_per_m,price_out_per_m').eq('is_active', true).maybeSingle();
+export async function activeProvider(orgId: string): Promise<ProviderConfig | null> {
+  const hit = cache.get(orgId);
+  if (hit && Date.now() - hit.at < 30000) return hit.cfg;
+  const db = supabaseAdmin();
+  const { data: org } = await db.from('organizations').select('active_llm_provider_id').eq('id', orgId).maybeSingle();
+  const { data } = org?.active_llm_provider_id
+    ? await db.from('llm_providers').select('id,provider,api_key,model,base_url,price_in_per_m,price_out_per_m')
+      .eq('id', org.active_llm_provider_id).eq('org_id', orgId).maybeSingle()
+    : { data: null };
   let cfg: ProviderConfig | null = data ? {
     id: data.id, provider: data.provider as Provider, apiKey: data.api_key, model: data.model, baseUrl: data.base_url,
     priceIn: data.price_in_per_m === null ? null : Number(data.price_in_per_m), priceOut: data.price_out_per_m === null ? null : Number(data.price_out_per_m)
@@ -48,7 +53,7 @@ export async function activeProvider(): Promise<ProviderConfig | null> {
   if (!cfg && process.env.GEMINI_API_KEY) {
     cfg = { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_TEXT_MODEL || DEFAULT_MODELS.gemini };
   }
-  cached = { at: Date.now(), cfg };
+  cache.set(orgId, { at: Date.now(), cfg });
   return cfg;
 }
 
@@ -154,18 +159,18 @@ export function costOf(c: ProviderConfig, inTok: number, outTok: number, reporte
 }
 
 // The function every feature calls
-export async function llm(system: string, turns: Turn[], opts: { json?: boolean; temperature?: number; track?: Track } = {}) {
-  const c = await activeProvider();
+export async function llm(system: string, turns: Turn[], opts: { json?: boolean; temperature?: number; track: Track }) {
+  const c = await activeProvider(opts.track.orgId);
   if (!c) throw new Error('No AI provider is set up. Add an API key on the AI settings page.');
   let r: Result | null = null, err: unknown = null;
   try { r = await callProvider(c, system, turns, opts); } catch (e) { err = e; }
   // Usage log never blocks or breaks the feature
   try {
     await supabaseAdmin().from('llm_usage').insert({
-    provider: c.provider, model: c.model, feature: opts.track?.feature || 'other',
+    org_id: opts.track.orgId, provider: c.provider, model: c.model, feature: opts.track.feature || 'other',
     input_tokens: r?.inputTokens || 0, output_tokens: r?.outputTokens || 0,
     cost_usd: r ? costOf(c, r.inputTokens, r.outputTokens, r.costUsd) : null,
-    user_id: opts.track?.userId || null, subaccount_id: opts.track?.subaccountId || null, ok: !err
+    user_id: opts.track.userId || null, subaccount_id: opts.track.subaccountId || null, ok: !err
     });
   } catch { /* logging must not break the feature */ }
   if (err) throw err;

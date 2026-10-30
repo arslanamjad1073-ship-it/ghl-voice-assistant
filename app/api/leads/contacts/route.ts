@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
-import { getSubaccount, searchContacts } from '@/lib/ghl';
+import { requireSubaccount } from '@/lib/access';
+import { searchContacts } from '@/lib/ghl';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/leads/contacts?subaccount=<id>&q=<name, email or phone>  (empty q = recently updated)
 export async function GET(req: Request) {
-  const auth = await requireUser();
-  if (auth.error) return auth.error;
   const p = new URL(req.url).searchParams;
-  const sa = await getSubaccount(p.get('subaccount') || '');
-  if (!sa) return NextResponse.json({ error: 'Choose a sub-account first' }, { status: 400 });
+  const r = await requireSubaccount(p.get('subaccount'));
+  if (r.error) return r.error;
+  const sa = r.sa;
   try {
     return NextResponse.json({ items: await searchContacts(sa, (p.get('q') || '').trim().slice(0, 100)) });
   } catch (e) {

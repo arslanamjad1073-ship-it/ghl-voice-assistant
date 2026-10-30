@@ -81,6 +81,8 @@ function DailyChart({ days, metric }: { days: (Agg & { day: string })[]; metric:
 export default function AiSettingsPage() {
   const [items, setItems] = useState<Saved[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [canViewUsage, setCanViewUsage] = useState(false);
+  const [denied, setDenied] = useState('');
   const [envFallback, setEnvFallback] = useState(false);
   const [known, setKnown] = useState<Record<string, { in: number; out: number }>>({});
   const [form, setForm] = useState<{ id?: number; provider: Provider; label: string; apiKey: string; model: string; baseUrl: string; priceIn: string; priceOut: string } | null>(null);
@@ -92,14 +94,17 @@ export default function AiSettingsPage() {
   const [table, setTable] = useState(false);
 
   const load = useCallback(async () => {
-    const d = await fetch('/api/ai/providers', { cache: 'no-store' }).then((r) => r.json());
-    setItems(d.items || []); setCanManage(!!d.canManage); setEnvFallback(!!d.envFallback); setKnown(d.knownPrices || {});
+    const r = await fetch('/api/ai/providers', { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setDenied(d.error || 'You do not have access to this page.'); return; }
+    setItems(d.items || []); setCanManage(!!d.canManage); setCanViewUsage(!!d.canViewUsage); setEnvFallback(!!d.envFallback); setKnown(d.knownPrices || {});
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
+    if (!canViewUsage) return;
     setUsage(null);
     fetch('/api/ai/usage?days=' + days, { cache: 'no-store' }).then((r) => r.json()).then(setUsage).catch(() => setUsage(null));
-  }, [days]);
+  }, [days, canViewUsage]);
 
   const active = items.find((i) => i.is_active);
   const startNew = (p: Provider = 'gemini') => { setForm({ provider: p, label: '', apiKey: '', model: MODEL_HINTS[p][0] || '', baseUrl: '', priceIn: '', priceOut: '' }); setMsg(null); };
@@ -144,13 +149,15 @@ export default function AiSettingsPage() {
   }, [usage, days]);
   const knownPrice = form ? known[form.model] : undefined;
 
+  if (denied) return <p className="rounded-2xl bg-card px-4 py-3 text-sm text-muted">{denied}</p>;
+
   return (
     <div>
       <div className="flex items-center gap-3">
         <Link href="/" aria-label="Back" className="flex size-11 items-center justify-center rounded-full bg-card hover:bg-card-2"><IconBack size={20} /></Link>
         <div>
           <h1 className="text-[26px] font-semibold leading-tight tracking-tight">AI settings</h1>
-          <p className="text-sm text-muted">Which AI powers prompts, writing and lead summaries, and what it costs.</p>
+          <p className="text-sm text-muted">Which AI powers prompts, writing and lead summaries for your organization, and what it costs.</p>
         </div>
       </div>
 
@@ -170,7 +177,7 @@ export default function AiSettingsPage() {
             )}
           </div>
 
-          <div className="rounded-[24px] border border-line bg-panel p-5">
+          {canManage && <div className="rounded-[24px] border border-line bg-panel p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-semibold">Saved keys</h2>
               {canManage && !form && <button onClick={() => startNew()} className="h-9 rounded-full bg-cyan px-4 text-sm font-semibold text-cyan-ink">Add a key</button>}
@@ -194,8 +201,8 @@ export default function AiSettingsPage() {
               ))}
               {!items.length && <li className="text-sm text-muted">No keys saved{envFallback ? '. Using GEMINI_API_KEY from Vercel.' : '.'}</li>}
             </ul>
-            {!canManage && <p className="mt-3 text-xs text-muted">Only admins can change AI keys.</p>}
-          </div>
+          </div>}
+          {!canManage && <p className="px-1 text-xs text-muted">Only the owner, or members they allow, can change the AI key.</p>}
 
           {form && (
             <form onSubmit={save} className="space-y-4 rounded-[24px] border border-line bg-panel p-5">
@@ -237,7 +244,7 @@ export default function AiSettingsPage() {
         </section>
 
         {/* Usage */}
-        <section className="rounded-[24px] border border-line bg-panel p-5">
+        {canViewUsage && <section className="rounded-[24px] border border-line bg-panel p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">Usage & cost</h2>
             <div className="flex gap-1 rounded-full bg-card p-1 text-sm" role="tablist" aria-label="Period">
@@ -306,7 +313,7 @@ export default function AiSettingsPage() {
               <p className="mt-4 text-xs text-muted">Tokens come from each AI provider’s response. Cost = tokens × the prices on your key (OpenRouter reports its own cost). Voice calls (Gemini Live in Voximplant) are not included.</p>
             </>
           )}
-        </section>
+        </section>}
       </div>
     </div>
   );

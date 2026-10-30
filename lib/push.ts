@@ -1,6 +1,7 @@
 import 'server-only';
 import webpush from 'web-push';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { membersWithAccess } from '@/lib/access';
 
 let configured = false;
 function configure() {
@@ -13,13 +14,15 @@ function configure() {
   return true;
 }
 
-// Sends a push to every subscribed browser of users who have not muted this sub-account;
-// drops subscriptions the browser has revoked
-export async function pushToSubscribers(subaccountId: string, payload: { title: string; body: string; url: string; tag?: string }) {
+// Sends a push to the browsers of members of the sub-account's organization who can access it
+// and have not muted it; drops subscriptions the browser has revoked
+export async function pushToSubscribers(orgId: string, subaccountId: string, payload: { title: string; body: string; url: string; tag?: string }) {
   if (!configure()) return { sent: 0, skipped: 'VAPID keys not set' };
   const db = supabaseAdmin();
+  const allowed = await membersWithAccess(orgId, subaccountId);
+  if (!allowed.length) return { sent: 0 };
   const [{ data: subs }, { data: muted }] = await Promise.all([
-    db.from('push_subscriptions').select('id,user_id,endpoint,p256dh,auth'),
+    db.from('push_subscriptions').select('id,user_id,endpoint,p256dh,auth').in('user_id', allowed),
     db.from('user_state').select('user_id').contains('muted_subaccounts', [subaccountId])
   ]);
   const skip = new Set((muted || []).map((m) => m.user_id));

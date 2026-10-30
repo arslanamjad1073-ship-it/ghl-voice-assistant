@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSubaccounts } from '@/lib/useSubaccounts';
 import type { SubaccountPublic } from '@/lib/types';
 import { IconBuilding, IconEdit, IconPlus, IconTrash, IconCheck, IconMail, IconBell } from '@/components/Icons';
+import { useAccess } from '@/components/AccessProvider';
 
 const SCOPES = [
   'contacts.readonly', 'contacts.write', 'opportunities.readonly', 'opportunities.write',
@@ -29,6 +30,7 @@ function Field({ label, hint, children }: { label: string; hint?: React.ReactNod
 
 export default function SubaccountsPage() {
   const sa = useSubaccounts();
+  const access = useAccess();
   const [editing, setEditing] = useState<SubaccountPublic | 'new' | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -86,7 +88,10 @@ export default function SubaccountsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[30px] font-semibold tracking-tight">Sub-accounts</h1>
-          <p className="mt-1 text-[15px] text-muted">The GHL sub-accounts Nova can work in. The AI key is set on the <Link href="/settings/ai" className="text-cyan hover:underline">AI keys &amp; usage</Link> page.</p>
+          <p className="mt-1 text-[15px] text-muted">
+            {access.allSubaccounts ? 'The GHL sub-accounts of ' + access.orgName + '.' : 'The GHL sub-accounts you have access to.'}
+            {access.can('manage_ai') && <> The AI key is set on the <Link href="/settings/ai" className="text-cyan hover:underline">AI keys &amp; usage</Link> page.</>}
+          </p>
         </div>
         {sa.canManage && !editing && (
           <button onClick={openNew} className="inline-flex h-12 items-center gap-2 rounded-full bg-cyan px-5 font-semibold text-cyan-ink hover:bg-[#7ddcf7]">
@@ -175,9 +180,13 @@ export default function SubaccountsPage() {
                 {s.id !== sa.selected && (
                   <button onClick={() => sa.setSelected(s.id)} className="h-9 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">Use this one</button>
                 )}
-                <Link href={`/subaccounts/${s.id}/branding`} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconMail size={15} /> Email branding</Link>
-                <button onClick={() => setHookFor(hookFor === s.id ? null : s.id)} aria-expanded={hookFor === s.id}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconBell size={15} /> Message alerts</button>
+                {access.can('manage_branding') && (
+                  <Link href={`/subaccounts/${s.id}/branding`} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconMail size={15} /> Email branding</Link>
+                )}
+                {sa.canManage && (
+                  <button onClick={() => setHookFor(hookFor === s.id ? null : s.id)} aria-expanded={hookFor === s.id}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconBell size={15} /> Message alerts</button>
+                )}
                 {sa.canManage && (
                   <>
                     <button onClick={() => openEdit(s)} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconEdit size={15} /> Edit</button>
@@ -185,7 +194,7 @@ export default function SubaccountsPage() {
                   </>
                 )}
               </div>
-              {hookFor === s.id && (
+              {hookFor === s.id && sa.canManage && (
                 <div className="mt-4 rounded-2xl bg-ink/60 p-4 text-sm">
                   <p className="font-medium">Get notified when a contact messages</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
@@ -207,7 +216,7 @@ export default function SubaccountsPage() {
         ))}
         {!sa.loading && !sa.items.length && !editing && (
           <li className="rounded-[24px] border border-dashed border-line p-8 text-center text-muted md:col-span-2">
-            No sub-accounts yet.{sa.canManage ? ' Add one to start talking to Nova.' : ' Ask an admin to add one.'}
+            No sub-accounts yet.{sa.canManage ? ' Add one to start using Nova.' : ' Ask the owner to give you access to a sub-account.'}
           </li>
         )}
       </ul>

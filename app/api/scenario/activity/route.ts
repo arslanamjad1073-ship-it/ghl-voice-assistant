@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
   const db = supabaseAdmin();
   const { data: s } = await db.from('call_sessions')
-    .select('id,user_id,user_email,user_name,subaccount_id,expires_at,subaccounts(name)')
+    .select('id,org_id,user_id,user_email,user_name,subaccount_id,expires_at,subaccounts(name)')
     .eq('token', b.token).maybeSingle();
   if (!s) return NextResponse.json({ error: 'Unknown session' }, { status: 404 });
   if (new Date(s.expires_at).getTime() < Date.now()) return NextResponse.json({ error: 'Session expired' }, { status: 410 });
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
 
   const { error } = await db.from('activities').insert({
     session_id: s.id,
+    org_id: s.org_id,
     subaccount_id: s.subaccount_id,
     subaccount_name: sa?.name || null,
     user_id: s.user_id,

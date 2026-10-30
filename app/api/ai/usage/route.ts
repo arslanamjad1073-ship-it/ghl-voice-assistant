@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { requireAccess } from '@/lib/access';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -15,10 +15,10 @@ function add(a: Agg, r: Row) {
 
 // GET ?days=1|7|30|0(all) -> totals, per model, per feature, per day
 export async function GET(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireAccess({ perm: 'view_usage' });
   if (auth.error) return auth.error;
   const days = Number(new URL(req.url).searchParams.get('days') ?? 30);
-  let q = supabaseAdmin().from('llm_usage').select('created_at,provider,model,feature,input_tokens,output_tokens,cost_usd,ok')
+  let q = supabaseAdmin().from('llm_usage').select('created_at,provider,model,feature,input_tokens,output_tokens,cost_usd,ok').eq('org_id', auth.access.orgId)
     .order('created_at', { ascending: true }).limit(50000);
   if (days > 0) q = q.gte('created_at', new Date(Date.now() - days * 86400000).toISOString());
   const { data, error } = await q;

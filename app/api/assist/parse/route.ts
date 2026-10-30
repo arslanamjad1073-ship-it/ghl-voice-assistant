@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireUser, displayName } from '@/lib/auth';
-import { getSubaccountFull, getMeta } from '@/lib/ghlActions';
+import { displayName } from '@/lib/auth';
+import { requireSubaccount } from '@/lib/access';
+import { getMeta } from '@/lib/ghlActions';
 import { searchContacts, getTranscript, transcriptText } from '@/lib/ghl';
 import { parsePrompt, writeContent } from '@/lib/assist';
 
@@ -9,16 +10,16 @@ export const maxDuration = 60;
 
 // POST { subaccountId, prompt } -> { action, reply, fields, contacts, contact, meta }
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth.error) return auth.error;
   const { subaccountId, prompt } = await req.json().catch(() => ({}));
-  const sa = await getSubaccountFull(String(subaccountId || ''));
-  if (!sa) return NextResponse.json({ error: 'Choose a sub-account first' }, { status: 400 });
+  const r = await requireSubaccount(subaccountId);
+  if (r.error) return r.error;
+  const { sa } = r;
+  const auth = { user: r.access.user };
   if (!String(prompt || '').trim()) return NextResponse.json({ error: 'Type what you want to do' }, { status: 400 });
 
   try {
     const meta = await getMeta(sa);
-    const track = { userId: auth.user.id, subaccountId: sa.id };
+    const track = { orgId: sa.org_id, userId: auth.user.id, subaccountId: sa.id };
     const p = await parsePrompt(String(prompt), meta, { feature: 'prompt_parse', ...track });
     const contacts = p.contact_query ? await searchContacts(sa, p.contact_query).catch(() => []) : [];
     const q = p.contact_query.toLowerCase();

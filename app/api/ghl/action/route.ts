@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { requireSubaccount } from '@/lib/access';
 import { getContact, type Contact } from '@/lib/ghl';
 import {
-  getSubaccountFull, getMeta, logActivity, createContact, setTags, addNote, addTask, saveOpportunity,
+  getMeta, logActivity, createContact, setTags, addNote, addTask, saveOpportunity,
   bookAppointment, createInvoice, prettyWhen, type InvoiceInput
 } from '@/lib/ghlActions';
 
@@ -13,11 +13,11 @@ const str = (v: unknown, max = 5000) => (typeof v === 'string' ? v.trim().slice(
 
 // POST { subaccountId, action, contactId?, data } -> runs one CRM action through the GHL API and logs it to History
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth.error) return auth.error;
   const b = await req.json().catch(() => ({}));
-  const sa = await getSubaccountFull(str(b.subaccountId, 100));
-  if (!sa) return NextResponse.json({ error: 'Choose a sub-account first' }, { status: 400 });
+  const r = await requireSubaccount(str(b.subaccountId, 100));
+  if (r.error) return r.error;
+  const { sa } = r;
+  const auth = { user: r.access.user };
   const d = (b.data && typeof b.data === 'object' ? b.data : {}) as Record<string, unknown>;
   const action = str(b.action, 40);
 
