@@ -308,7 +308,7 @@ export default function TeamPage() {
                       {ROLE_LABEL[i.role]} · invited by {i.invited_by_name || 'someone'} · {i.expired ? <span className="text-bad">expired</span> : `expires ${new Date(i.expires_at).toLocaleDateString()}`}
                     </p>
                   </div>
-                  {!i.expired && <button onClick={() => copy(link)} className={ghostBtn + ' bg-card-2'}><IconCopy size={15} /> {copied === link ? 'Copied' : 'Copy link'}</button>}
+                  {!i.expired && i.token && <button onClick={() => copy(link)} className={ghostBtn + ' bg-card-2'}><IconCopy size={15} /> {copied === link ? 'Copied' : 'Copy link'}</button>}
                   {canCancel && <button onClick={() => act('/api/team/invites?id=' + i.id, 'DELETE', undefined, `Invite for ${i.email} cancelled.`)} className="h-9 rounded-full px-3 text-sm text-bad hover:bg-bad/10">Cancel</button>}
                 </li>
               );

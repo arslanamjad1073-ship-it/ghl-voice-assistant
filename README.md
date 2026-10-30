@@ -52,7 +52,7 @@ Admins add an API key for Google Gemini, OpenAI, Anthropic Claude, OpenRouter or
 tested before it is saved; one key is active at a time and every text feature (prompt parsing, AI write, lead summaries,
 follow-ups, questions) uses it. Every request logs input/output tokens to `llm_usage`; cost = tokens × the price per
 1M tokens entered for the key (Claude prices are pre-filled; OpenRouter reports the exact cost). The voice agent runs in
-Voximplant and is not counted. Without a saved key, `GEMINI_API_KEY` from the environment is used.
+Voximplant and is not counted. Without a saved key, organizations on the `internal` plan use `GEMINI_API_KEY` from the environment.
 
 **Voice is an optional add-on**, off by default. Someone with the Sub-accounts permission turns it on per sub-account (Accounts › Edit › Nova voice); the Talk tab
 and "Talk instead" button only appear when it is on.
@@ -90,12 +90,12 @@ In the Supabase dashboard:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key (in `.env.example`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | secret key from Supabase (server only) |
 | `ALLOWED_EMAILS` | who may start a **new organization**, e.g. `you@company.com,@yourteam.com` (empty = anyone who signs up). Invited team members don't need it |
-| `APP_URL` | optional, public URL used in invite links |
+| `APP_URL` | your public URL, e.g. `https://ghl-voice-assistant.vercel.app` (used in invite links) |
 | `VOX_USER` / `VOX_APP` / `VOX_NODE` | `webuserr2` / `ghl-dialer.arslanamjad1073` / `NODE_2` |
 | `VOX_PASSWORD` | the Voximplant user's password |
 | `VOX_CALL_NUMBER` | `crm` |
 | `SCENARIO_SECRET` | output of `openssl rand -hex 32` |
-| `GEMINI_API_KEY` | optional fallback when no key is saved on the AI settings page |
+| `GEMINI_API_KEY` | optional fallback for organizations on the `internal` plan when no key is saved |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | from `npx web-push generate-vapid-keys` (push notifications) |
 | `VAPID_SUBJECT` | `mailto:` + your email |
 
@@ -170,6 +170,11 @@ only visible inside it. One login belongs to one organization.
 - Every API route checks the organization, the permission and the sub-account on the server (`lib/access.ts`); the UI only
   hides what a member can't use.
 - Tables: `organizations`, `memberships`, `member_subaccounts`, `invites` (`supabase/migrations/0006_organizations.sql`).
+- Invites can only be accepted from a **confirmed** email address, so keep "Confirm email" on in Supabase. Invites are
+  re-checked against the inviter's current access when accepted, and are cancelled if the inviter is disabled or removed.
+- Each organization adds its own AI key. The server's `GEMINI_API_KEY` is only used for organizations whose `plan` is
+  `internal` (set in the `organizations` table), so other customers can't spend it.
+- Set `APP_URL` in Vercel so invite links always use your real domain.
 
 ## Security notes
 - GHL tokens live only in Supabase. They're read with the service-role key on the server and never sent to the browser (the UI shows `••••abcd`).

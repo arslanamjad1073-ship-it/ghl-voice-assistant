@@ -11,7 +11,8 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
   const db = supabaseAdmin();
   const { data: m } = await db.from('memberships').select('status').eq('user_id', user.id).maybeSingle();
-  const { data: invites } = await db.from('invites').select('token,role,invited_by_name,expires_at,organizations(name)')
+  // Invites are only listed for a confirmed email address
+  const { data: invites } = !user.email_confirmed_at ? { data: [] } : await db.from('invites').select('token,role,invited_by_name,expires_at,organizations(name)')
     .eq('email', (user.email || '').toLowerCase()).is('accepted_at', null).is('revoked_at', null).gt('expires_at', new Date().toISOString());
   return NextResponse.json({
     email: user.email, name: displayName(user), member: m?.status || null,

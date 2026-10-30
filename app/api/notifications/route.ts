@@ -13,10 +13,11 @@ export async function GET() {
   const { data: st } = await db.from('user_state').select('notifications_read_at,muted_subaccounts').eq('user_id', access.user.id).maybeSingle();
   const muted: string[] = st?.muted_subaccounts || [];
   const readAt = st?.notifications_read_at || new Date(0).toISOString();
-  const ids = access.subaccountIds.filter((id) => !muted.includes(id));
-  if (!ids.length) return NextResponse.json({ items: [], readAt, unread: 0, muted });
-  const { data: items } = await db.from('notifications').select('id,created_at,subaccount_id,subaccount_name,contact_id,contact_name,channel,preview')
-    .eq('org_id', access.orgId).in('subaccount_id', ids).order('created_at', { ascending: false }).limit(40);
+  if (!access.allSubaccounts && !access.subaccountIds.some((id) => !muted.includes(id))) return NextResponse.json({ items: [], readAt, unread: 0, muted });
+  let q = db.from('notifications').select('id,created_at,subaccount_id,subaccount_name,contact_id,contact_name,channel,preview').eq('org_id', access.orgId);
+  if (!access.allSubaccounts) q = q.in('subaccount_id', access.subaccountIds.filter((id) => !muted.includes(id)));
+  else if (muted.length) q = q.not('subaccount_id', 'in', '(' + muted.join(',') + ')');
+  const { data: items } = await q.order('created_at', { ascending: false }).limit(40);
   const list = items || [];
   return NextResponse.json({ items: list, readAt, unread: list.filter((n) => n.created_at > readAt).length, muted });
 }

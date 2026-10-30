@@ -16,9 +16,11 @@ export async function GET() {
     db.from('member_subaccounts').select('membership_id,subaccount_id,memberships!inner(org_id)').eq('memberships.org_id', access.orgId),
     db.from('invites').select('id,email,name,role,permissions,all_subaccounts,subaccount_ids,token,invited_by_name,created_at,expires_at')
       .eq('org_id', access.orgId).is('accepted_at', null).is('revoked_at', null).order('created_at', { ascending: false }),
-    access.subaccountIds.length
-      ? db.from('subaccounts').select('id,name').eq('org_id', access.orgId).in('id', access.subaccountIds).order('name')
-      : Promise.resolve({ data: [] as { id: string; name: string }[] })
+    access.allSubaccounts
+      ? db.from('subaccounts').select('id,name').eq('org_id', access.orgId).order('name')
+      : access.subaccountIds.length
+        ? db.from('subaccounts').select('id,name').eq('org_id', access.orgId).in('id', access.subaccountIds).order('name')
+        : Promise.resolve({ data: [] as { id: string; name: string }[] })
   ]);
   const visible = new Set(access.subaccountIds);
   const byMember: Record<string, string[]> = {};
@@ -30,7 +32,7 @@ export async function GET() {
       ...m, all_subaccounts: m.role === 'owner' || m.all_subaccounts, permissions: m.role === 'owner' ? null : m.permissions,
       subaccount_ids: byMember[m.id] || []
     })),
-    invites: (invites || []).map((i) => ({ ...i, subaccount_ids: (i.subaccount_ids || []).filter((id: string) => visible.has(id)), expired: new Date(i.expires_at) < new Date() })),
+    invites: (invites || []).map((i) => ({ ...i, token: access.role === 'owner' || i.role === 'user' ? i.token : '', subaccount_ids: (i.subaccount_ids || []).filter((id: string) => visible.has(id)), expired: new Date(i.expires_at) < new Date() })),
     subaccounts: subs || [],
     canInviteAdmins: access.role === 'owner',
     canTeam: can(access, 'manage_team')

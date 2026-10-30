@@ -21,9 +21,9 @@ export async function POST(req: Request) {
   if (problem) return NextResponse.json({ error: problem }, { status: 403 });
 
   const db = supabaseAdmin();
-  const { data: existing } = await db.from('memberships').select('org_id').eq('email', email).maybeSingle();
-  if (existing) {
-    return NextResponse.json({ error: existing.org_id === access.orgId ? 'This person is already in your team.' : 'This email already belongs to another Nova organization.' }, { status: 400 });
+  const { data: existing } = await db.from('memberships').select('org_id').eq('email', email).limit(1);
+  if (existing?.length) {
+    return NextResponse.json({ error: existing[0].org_id === access.orgId ? 'This person is already in your team.' : 'This email already belongs to another Nova organization.' }, { status: 400 });
   }
   // Replace an older open invite for the same email
   await db.from('invites').update({ revoked_at: new Date().toISOString() }).eq('org_id', access.orgId).eq('email', email).is('accepted_at', null).is('revoked_at', null);

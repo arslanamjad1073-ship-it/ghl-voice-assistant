@@ -50,13 +50,24 @@ export default function InvitePage() {
           email: invite.email, password, options: { data: { full_name: name.trim() }, emailRedirectTo: window.location.origin + '/invite/' + token }
         });
         if (error) throw error;
-        if (data.user && !data.user.identities?.length) { setMode('signin'); throw new Error('This email already has a login. Sign in with its password.'); }
+        if (data.user && !data.user.identities?.length) { setMode('signin'); throw new Error('This email already has a login. Sign in with its password, or get a sign-in link by email below.'); }
         if (!data.session) { setMsg({ text: `We emailed ${invite.email} a confirmation link. Open it on this device to finish joining.` }); return; }
       }
       await refreshUser();
     } catch (err) {
       setMsg({ text: (err as Error).message || 'Something went wrong', bad: true });
     } finally { setBusy(false); }
+  }
+
+  // For people whose login was created by the invite email (no password yet)
+  async function emailLink() {
+    if (!invite) return;
+    setBusy(true); setMsg(null);
+    const { error } = await supabaseBrowser().auth.signInWithOtp({
+      email: invite.email, options: { emailRedirectTo: window.location.origin + '/invite/' + token, shouldCreateUser: false }
+    });
+    setBusy(false);
+    setMsg(error ? { text: error.message, bad: true } : { text: `We emailed ${invite.email} a sign-in link. Open it on this device to join.` });
   }
 
   async function accept() {
@@ -115,6 +126,11 @@ export default function InvitePage() {
                 <input className={input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Choose a password' : 'Password'}
                   required minLength={6} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} />
                 <button disabled={busy} className={btn}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create login' : 'Sign in'}</button>
+                {mode === 'signin' && (
+                  <button type="button" onClick={emailLink} disabled={busy} className="w-full text-center text-sm text-cyan hover:underline">
+                    No password? Email me a sign-in link
+                  </button>
+                )}
               </form>
             )}
 

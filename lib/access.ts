@@ -23,8 +23,8 @@ export const signedInUser = cache(async (): Promise<User | null> => {
   return user;
 });
 
-export const getAccess = cache(async (): Promise<Access | null> => {
-  const user = await signedInUser();
+export const getAccess = cache(async (signed?: User | null): Promise<Access | null> => {
+  const user = signed === undefined ? await signedInUser() : signed;
   if (!user) return null;
   const db = supabaseAdmin();
   const { data: m } = await db.from('memberships')
@@ -56,7 +56,7 @@ const deny = (error: string, status: number, code?: string) => ({ error: NextRes
 export async function requireAccess(opts: { perm?: Permission; ownerOnly?: boolean } = {}): Promise<{ access: Access; error?: never } | { access?: never; error: NextResponse }> {
   const user = await signedInUser();
   if (!user) return deny('Not signed in', 401);
-  const access = await getAccess();
+  const access = await getAccess(user);
   if (!access) return deny('You are not a member of an organization yet', 403, 'no_org');
   if (opts.ownerOnly && access.role !== 'owner') return deny('Only the owner can do this', 403);
   if (opts.perm && !can(access, opts.perm)) return deny('You do not have permission for this. Ask the owner.', 403);
@@ -74,6 +74,14 @@ export async function requireSubaccount(id: unknown, opts: { perm?: Permission }
   const sa = await getSubaccountFull(sid);
   if (!sa || sa.org_id !== r.access.orgId) return deny('Sub-account not found', 404);
   return { access: r.access, sa };
+}
+
+// Narrows a query on a table with org_id + subaccount_id to what this member may see.
+// Org-wide members filter by organization only (keeps the URL short with many sub-accounts).
+export function scopeIds(a: Access, sub?: string | null): string[] | 'all' | null {
+  if (sub) return a.subaccountIds.includes(sub) ? [sub] : null;
+  if (a.allSubaccounts) return 'all';
+  return a.subaccountIds.length ? a.subaccountIds : null;
 }
 
 // Fields copied onto every history / follow-up row

@@ -13,8 +13,9 @@ export async function GET() {
   const { access } = auth;
   const canManage = can(access, 'manage_subaccounts');
   if (!access.subaccountIds.length) return NextResponse.json({ items: [], canManage, canBrand: can(access, 'manage_branding') });
-  const { data, error } = await supabaseAdmin().from('subaccounts').select(SUBACCOUNT_PUBLIC_COLUMNS)
-    .eq('org_id', access.orgId).in('id', access.subaccountIds).order('name');
+  let q = supabaseAdmin().from('subaccounts').select(SUBACCOUNT_PUBLIC_COLUMNS).eq('org_id', access.orgId);
+  if (!access.allSubaccounts) q = q.in('id', access.subaccountIds);
+  const { data, error } = await q.order('name');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   // The alert webhook key is setup information: only for members who manage sub-accounts
   const items = (data || []).map((r) => toPublic(r)).map((s) => (canManage ? s : { ...s, webhook_key: '', notify_webhook_url: null }));

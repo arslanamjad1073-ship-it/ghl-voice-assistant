@@ -56,8 +56,24 @@ export async function setMemberSubaccounts(actor: Access, membershipId: string, 
   const next = uniq([...keep, ...ids]);
   const remove = current.filter((id) => !next.includes(id));
   const add = next.filter((id) => !current.includes(id));
-  if (remove.length) await db.from('member_subaccounts').delete().eq('membership_id', membershipId).in('subaccount_id', remove);
+  if (remove.length) {
+    await db.from('member_subaccounts').delete().eq('membership_id', membershipId).in('subaccount_id', remove);
+    const { data: m } = await db.from('memberships').select('user_id').eq('id', membershipId).maybeSingle();
+    if (m) await endSessions(m.user_id, remove);
+  }
   if (add.length) await db.from('member_subaccounts').insert(add.map((subaccount_id) => ({ membership_id: membershipId, subaccount_id })));
+}
+
+// Ends a member's open voice sessions (all, or only for some sub-accounts) and, when fully cut off, their push alerts
+export async function endSessions(userId: string, subaccountIds?: string[]) {
+  const db = supabaseAdmin();
+  let q = db.from('call_sessions').update({ expires_at: new Date().toISOString() }).eq('user_id', userId).gt('expires_at', new Date().toISOString());
+  if (subaccountIds) {
+    if (!subaccountIds.length) return;
+    q = q.in('subaccount_id', subaccountIds);
+  }
+  await q;
+  if (!subaccountIds) await db.from('push_subscriptions').delete().eq('user_id', userId);
 }
 
 export const newInviteToken = () => randomBytes(24).toString('base64url');

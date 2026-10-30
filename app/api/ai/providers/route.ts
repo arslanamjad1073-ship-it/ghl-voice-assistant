@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAccess, can } from '@/lib/access';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { callProvider, clearProviderCache, DEFAULT_MODELS, KNOWN_PRICES, type Provider, type ProviderConfig } from '@/lib/llm';
+import { callProvider, assertPublicUrl, clearProviderCache, DEFAULT_MODELS, KNOWN_PRICES, type Provider, type ProviderConfig } from '@/lib/llm';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,6 +19,11 @@ function toPublic(r: Record<string, unknown>, activeId: number | null) {
 async function activeId(orgId: string) {
   const { data } = await supabaseAdmin().from('organizations').select('active_llm_provider_id').eq('id', orgId).maybeSingle();
   return (data?.active_llm_provider_id as number | null) ?? null;
+}
+async function sharedKeyAllowed(orgId: string) {
+  if (!process.env.GEMINI_API_KEY) return false;
+  const { data } = await supabaseAdmin().from('organizations').select('plan').eq('id', orgId).maybeSingle();
+  return data?.plan === 'internal';
 }
 async function setActive(orgId: string, id: number | null) {
   await supabaseAdmin().from('organizations').update({ active_llm_provider_id: id }).eq('id', orgId);
@@ -38,7 +43,7 @@ export async function GET() {
   const items = (data || []).map((r) => toPublic(r, act));
   return NextResponse.json({
     items: canManage ? items : items.filter((i) => i.is_active).map(({ key_hint: _k, ...i }) => ({ ...i, key_hint: '' })),
-    envFallback: !!process.env.GEMINI_API_KEY,
+    envFallback: await sharedKeyAllowed(access.orgId),
     canManage,
     canViewUsage: can(access, 'view_usage'),
     defaults: DEFAULT_MODELS,
@@ -59,7 +64,9 @@ export async function POST(req: Request) {
   const model = String(b.model || '').trim();
   if (!model) return NextResponse.json({ error: 'Enter a model name' }, { status: 400 });
   const baseUrl = String(b.baseUrl || '').trim();
-  if (provider === 'custom' && !/^https?:\/\//.test(baseUrl)) return NextResponse.json({ error: 'Enter the base URL, e.g. https://api.example.com/v1' }, { status: 400 });
+  if (provider === 'custom') {
+    try { await assertPublicUrl(baseUrl); } catch (e) { return NextResponse.json({ error: (e as Error).message + ', e.g. https://api.example.com/v1' }, { status: 400 }); }
+  }
 
   let apiKey = String(b.apiKey || '').trim();
   if (!apiKey && b.id) {

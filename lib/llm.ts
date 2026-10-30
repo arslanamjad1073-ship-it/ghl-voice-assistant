@@ -1,5 +1,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
+import { lookup } from 'dns/promises';
+import { isIP } from 'net';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 // One entry point for every AI feature. Each organization picks its own provider/key on the AI settings page
@@ -41,7 +43,7 @@ export async function activeProvider(orgId: string): Promise<ProviderConfig | nu
   const hit = cache.get(orgId);
   if (hit && Date.now() - hit.at < 30000) return hit.cfg;
   const db = supabaseAdmin();
-  const { data: org } = await db.from('organizations').select('active_llm_provider_id').eq('id', orgId).maybeSingle();
+  const { data: org } = await db.from('organizations').select('active_llm_provider_id,plan').eq('id', orgId).maybeSingle();
   const { data } = org?.active_llm_provider_id
     ? await db.from('llm_providers').select('id,provider,api_key,model,base_url,price_in_per_m,price_out_per_m')
       .eq('id', org.active_llm_provider_id).eq('org_id', orgId).maybeSingle()
@@ -50,7 +52,9 @@ export async function activeProvider(orgId: string): Promise<ProviderConfig | nu
     id: data.id, provider: data.provider as Provider, apiKey: data.api_key, model: data.model, baseUrl: data.base_url,
     priceIn: data.price_in_per_m === null ? null : Number(data.price_in_per_m), priceOut: data.price_out_per_m === null ? null : Number(data.price_out_per_m)
   } : null;
-  if (!cfg && process.env.GEMINI_API_KEY) {
+  // The server's own Gemini key is only for organizations on the 'internal' plan, so other customers
+  // can't spend it; they add their own key on the AI settings page.
+  if (!cfg && process.env.GEMINI_API_KEY && org?.plan === 'internal') {
     cfg = { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_TEXT_MODEL || DEFAULT_MODELS.gemini };
   }
   cache.set(orgId, { at: Date.now(), cfg });
@@ -83,9 +87,32 @@ async function callGemini(c: ProviderConfig, system: string, turns: Turn[], json
   };
 }
 
+// Custom base URLs must be public https endpoints (no localhost, private or cloud-metadata addresses)
+function privateIp(ip: string): boolean {
+  if (isIP(ip) === 6) {
+    const v = ip.toLowerCase();
+    if (v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80')) return true;
+    const m = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    return m ? privateIp(m[1]) : false;
+  }
+  const [a, b] = ip.split('.').map(Number);
+  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+}
+export async function assertPublicUrl(raw: string) {
+  let u: URL;
+  try { u = new URL(raw); } catch { throw new Error('The base URL is not a valid URL'); }
+  if (u.protocol !== 'https:') throw new Error('The base URL must start with https://');
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  if (/^localhost$|\.local$|\.internal$/i.test(host)) throw new Error('The base URL must be a public address');
+  const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true }).catch(() => { throw new Error('The base URL host could not be found'); });
+  if (!addrs.length || addrs.some((a) => privateIp(a.address))) throw new Error('The base URL must be a public address');
+}
+
 async function callOpenAICompatible(c: ProviderConfig, system: string, turns: Turn[], json: boolean, temperature: number): Promise<Result> {
   const base = (c.provider === 'openai' ? 'https://api.openai.com/v1' : c.provider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (c.baseUrl || '')).replace(/\/+$/, '');
   if (!base) throw new Error('Set the base URL for the custom provider');
+  if (c.provider === 'custom') await assertPublicUrl(base);
   const body: Record<string, unknown> = {
     model: c.model,
     messages: [{ role: 'system', content: system + (json ? JSON_RULE : '') }, ...turns.map((t) => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text }))],
@@ -105,7 +132,8 @@ async function callOpenAICompatible(c: ProviderConfig, system: string, turns: Tu
     const { temperature: _t, response_format: _f, ...rest } = body;
     ({ r, d } = await send(rest));
   }
-  if (!r.ok) throw new Error(`${c.provider} error ${r.status}: ${d?.error?.message || r.statusText}`);
+  // A custom endpoint's raw error body is not shown back (it could be anything the URL returns)
+  if (!r.ok) throw new Error(`${c.provider} error ${r.status}` + (c.provider === 'custom' ? '' : `: ${d?.error?.message || r.statusText}`));
   const u = d?.usage || {};
   return {
     text: String(d?.choices?.[0]?.message?.content || '').trim(),

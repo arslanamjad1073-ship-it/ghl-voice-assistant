@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAccess } from '@/lib/access';
+import { requireAccess, scopeIds } from '@/lib/access';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -15,13 +15,12 @@ export async function GET(req: Request) {
   const p = new URL(req.url).searchParams;
   const limit = Math.min(Math.max(Number(p.get('limit')) || 30, 1), 100);
 
-  const sub = p.get('subaccount');
-  if (sub && !access.subaccountIds.includes(sub)) return NextResponse.json({ items: [], hasMore: false });
-  const ids = sub ? [sub] : access.subaccountIds;
-  if (!ids.length) return NextResponse.json({ items: [], hasMore: false });
+  const ids = scopeIds(access, p.get('subaccount'));
+  if (!ids) return NextResponse.json({ items: [], hasMore: false });
 
-  let q = supabaseAdmin().from('activities').select(COLS).eq('org_id', access.orgId).in('subaccount_id', ids)
-    .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
+  let q = supabaseAdmin().from('activities').select(COLS).eq('org_id', access.orgId);
+  if (ids !== 'all') q = q.in('subaccount_id', ids);
+  q = q.order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
   const status = p.get('status');
   if (status === 'success' || status === 'error') q = q.eq('status', status);
   const search = (p.get('q') || '').trim().replace(/[%_,()]/g, ' ');
