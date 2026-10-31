@@ -135,8 +135,24 @@ Edit it and send it through GHL (`POST /conversations/messages`).
 - Emails use the sub-account's **email branding** (Sub-accounts › Email branding): logo, font, size, colours, signature, footer.
 
 ## Message alerts (in-app + push)
-For each sub-account, create a GHL workflow: Trigger **Customer Replied** → Action **Webhook** (POST) to the URL shown under
-Sub-accounts › Message alerts (`/api/webhooks/ghl/<key>`). Each inbound message then shows in the bell panel and, for users who turned
+**One click (Nova GHL app):** on a sub-account card, click **Enable notifications**. GHL opens, pick the matching location and
+click **Allow**. Nova's Marketplace app is installed and GHL sends every inbound message (SMS, email, Facebook, Instagram,
+WhatsApp, live chat) to `/api/webhooks/ghl-app`. Nothing to build in GHL.
+- `/api/ghl/app/install` → GHL install link with a signed `state`; `/api/ghl/app/callback` swaps the code for tokens, checks the
+  location matches the Nova sub-account and the member has the Sub-accounts permission (agency-level installs are turned into a
+  location token). Installs live in `ghl_app_installs` (`supabase/migrations/0008_ghl_app.sql`).
+- Each webhook message is confirmed with GHL (looked up by `messageId` with the sub-account's token) before an alert is shown, so
+  forged requests are ignored. If `GHL_APP_WEBHOOK_PUBLIC_KEY` is set, GHL's signature is checked too and INSTALL/UNINSTALL
+  events update the status.
+- Uninstalls are also detected by re-checking the app's token with GHL (at most hourly, when the Sub-accounts page loads):
+  the card then shows **Reconnect alerts**.
+- GHL app settings: Redirect URL `https://YOUR-APP/api/ghl/app/callback`, webhook URL `https://YOUR-APP/api/webhooks/ghl-app`,
+  event **InboundMessage**. Vercel: `GHL_APP_CLIENT_ID`, `GHL_APP_CLIENT_SECRET`, `GHL_APP_INSTALL_URL` (the portal's install link).
+
+**Manual (fallback):** create a GHL workflow: Trigger **Customer Replied** → Action **Webhook** (POST) to the URL shown under
+Sub-accounts › Set up manually (`/api/webhooks/ghl/<key>`). It is skipped for locations that have the app, so nobody is alerted twice.
+
+Each inbound message then shows in the bell panel and, for users who turned
 push on, as a phone/desktop notification. Tapping it opens the lead. On iPhone, add Nova to the Home Screen first (iOS 16.4+).
 - The bell updates instantly: the webhook sends a Supabase Realtime broadcast (topic `nova-notifications`, no message data in it),
   open tabs then fetch the details through the API. A 60-second poll is the fallback.

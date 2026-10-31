@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSubaccounts } from '@/lib/useSubaccounts';
 import type { SubaccountPublic } from '@/lib/types';
@@ -38,6 +38,25 @@ export default function SubaccountsPage() {
   const [notice, setNotice] = useState('');
   const [hookFor, setHookFor] = useState<string | null>(null);
   const [copied, setCopied] = useState('');
+  // Message alerts through Nova's GHL app
+  const [alerts, setAlerts] = useState<{ configured: boolean; items: Record<string, { status: string; lastEventAt: string | null }> } | null>(null);
+  const loadAlerts = useCallback(() => {
+    fetch('/api/ghl/app/status', { cache: 'no-store' }).then((r) => r.json()).then((d) => { if (!d.error) setAlerts(d); }).catch(() => {});
+  }, []);
+  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+  // Result of the GHL install (?alerts_on=Name / ?alerts_error=message)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const on = q.get('alerts_on'), err = q.get('alerts_error');
+    if (on) setNotice(`Message alerts are on for "${on}". Turn on push notifications from the bell to get them on this device.`);
+    if (err) setError(err);
+    if (on || err) window.history.replaceState(null, '', '/subaccounts');
+  }, []);
+  async function alertsOff(s: SubaccountPublic) {
+    if (!confirm(`Turn off message alerts for "${s.name}"? Also remove the Nova app in GHL (Settings › Integrations) if you no longer need it.`)) return;
+    await fetch('/api/ghl/app/status?subaccount=' + s.id, { method: 'DELETE' });
+    loadAlerts();
+  }
   const hookUrl = (key: string) => (typeof window !== 'undefined' ? window.location.origin : '') + '/api/webhooks/ghl/' + key;
   async function copy(text: string) {
     try { await navigator.clipboard.writeText(text); setCopied(text); setTimeout(() => setCopied(''), 2000); } catch { /* clipboard blocked */ }
@@ -176,6 +195,21 @@ export default function SubaccountsPage() {
               </div>
               <p className="mt-0.5 truncate font-mono text-xs text-muted">{s.location_id}</p>
               <p className="mt-2 text-sm text-muted">{s.timezone}{s.voice_enabled ? ' · Voice on' : ' · Prompts only'}</p>
+              {(() => {
+                const st = alerts?.items[s.id]?.status;
+                const last = alerts?.items[s.id]?.lastEventAt;
+                if (st === 'active') return (
+                  <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-ok/12 px-2.5 py-0.5 text-xs font-medium text-ok"><IconBell size={13} /> Message alerts on</span>
+                    {last && <span className="text-xs text-faint">last alert {new Date(last).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>}
+                  </p>
+                );
+                if (st === 'disconnected' || st === 'uninstalled') return (
+                  <p className="mt-2"><span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5b041]/12 px-2.5 py-0.5 text-xs font-medium text-[#f8c471]">
+                    <IconBell size={13} /> {st === 'disconnected' ? 'Alerts disconnected: the app was removed in GHL' : 'Message alerts off'}</span></p>
+                );
+                return null;
+              })()}
               <div className="mt-3 flex flex-wrap gap-2">
                 {s.id !== sa.selected && (
                   <button onClick={() => sa.setSelected(s.id)} className="h-9 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">Use this one</button>
@@ -183,9 +217,21 @@ export default function SubaccountsPage() {
                 {access.can('manage_branding') && (
                   <Link href={`/subaccounts/${s.id}/branding`} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconMail size={15} /> Email branding</Link>
                 )}
-                {sa.canManage && (
+                {sa.canManage && alerts?.configured && alerts.items[s.id]?.status !== 'active' && (
+                  // Plain link: the browser goes to GHL to install the app, then comes back here
+                  <a href={'/api/ghl/app/install?subaccount=' + s.id}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-full bg-cyan px-4 text-sm font-semibold text-cyan-ink hover:bg-[#7ddcf7]">
+                    <IconBell size={15} /> {alerts.items[s.id] ? 'Reconnect alerts' : 'Enable notifications'}
+                  </a>
+                )}
+                {sa.canManage && alerts?.items[s.id]?.status === 'active' && (
+                  <button onClick={() => alertsOff(s)} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconBell size={15} /> Turn off alerts</button>
+                )}
+                {sa.canManage && alerts?.items[s.id]?.status !== 'active' && (
                   <button onClick={() => setHookFor(hookFor === s.id ? null : s.id)} aria-expanded={hookFor === s.id}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconBell size={15} /> Message alerts</button>
+                    className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">
+                    {alerts?.configured ? 'Set up manually' : <><IconBell size={15} /> Message alerts</>}
+                  </button>
                 )}
                 {sa.canManage && (
                   <>
@@ -196,7 +242,7 @@ export default function SubaccountsPage() {
               </div>
               {hookFor === s.id && sa.canManage && (
                 <div className="mt-4 rounded-2xl bg-ink/60 p-4 text-sm">
-                  <p className="font-medium">Get notified when a contact messages</p>
+                  <p className="font-medium">{alerts?.configured ? 'Manual setup (instead of the Nova app)' : 'Get notified when a contact messages'}</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
                     <li>In this GHL sub-account open <b className="text-fg">Automation › Workflows</b> and create a workflow.</li>
                     <li>Trigger: <b className="text-fg">Customer Replied</b> (any channel).</li>

@@ -1,18 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { ghl } from '@/lib/ghl';
-import { pushToSubscribers } from '@/lib/push';
-import { broadcastRefresh } from '@/lib/realtime';
+import { notifyReply, channelName } from '@/lib/notify';
 
 export const dynamic = 'force-dynamic';
 
 interface Conv { id: string; lastMessageBody?: string; lastMessageType?: string; lastMessageDirection?: string; lastMessageDate?: number | string; fullName?: string; contactName?: string }
 
-const CHANNEL: Record<string, string> = { SMS: 'SMS', EMAIL: 'Email', FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', WHATSAPP: 'WhatsApp', CALL: 'Call', GMB: 'Google', WEBCHAT: 'Web chat', LIVE_CHAT: 'Live chat' };
-const channelName = (t?: unknown) => {
-  const raw = String(t ?? '').replace(/^TYPE_/, '').toUpperCase();
-  return CHANNEL[raw] || (raw && isNaN(Number(raw)) ? raw.charAt(0) + raw.slice(1).toLowerCase() : 'Message');
-};
 const pick = (o: Record<string, unknown>, ...keys: string[]) => {
   for (const k of keys) { const v = k.split('.').reduce<unknown>((x, p) => (x && typeof x === 'object' ? (x as Record<string, unknown>)[p] : undefined), o); if (v) return String(v); }
   return '';
@@ -24,6 +18,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
   const db = supabaseAdmin();
   const { data: sa } = await db.from('subaccounts').select('id,org_id,name,location_id,ghl_token').eq('webhook_key', key).maybeSingle();
   if (!sa) return NextResponse.json({ error: 'Unknown webhook key' }, { status: 404 });
+  // Locations with Nova's GHL app installed get alerts from the app; skip so nobody is alerted twice
+  const { data: app } = await db.from('ghl_app_installs').select('status').eq('location_id', sa.location_id).maybeSingle();
+  if (app?.status === 'active') return NextResponse.json({ ok: true, skipped: 'alerts come from the Nova GHL app' });
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const contactId = pick(body, 'contact_id', 'contactId', 'contact.id');
@@ -49,21 +46,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
     }
   } catch { /* fall back to the payload */ }
 
-  preview = preview.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'New message';
-  name = name || 'A contact';
   if (!dedupe) dedupe = contactId + ':' + preview.slice(0, 50) + ':' + Math.floor(Date.now() / 60000);
-
-  const { error } = await db.from('notifications').insert({
-    org_id: sa.org_id, subaccount_id: sa.id, subaccount_name: sa.name, contact_id: contactId, contact_name: name, channel, preview, dedupe_key: dedupe
-  });
-  if (error?.code === '23505') return NextResponse.json({ ok: true, duplicate: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const [push] = await Promise.all([pushToSubscribers(sa.org_id, sa.id, {
-    title: `${name} · ${channel}`,
-    body: preview,
-    url: `/leads?sa=${sa.id}&contact=${encodeURIComponent(contactId)}`,
-    tag: 'msg-' + contactId
-  }), broadcastRefresh()]);
-  return NextResponse.json({ ok: true, push });
+  const r = await notifyReply(sa, { contactId, name, channel, preview, dedupe });
+  return NextResponse.json({ ok: true, ...r });
 }
