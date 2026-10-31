@@ -217,11 +217,11 @@ export default function SubaccountsPage() {
                 {access.can('manage_branding') && (
                   <Link href={`/subaccounts/${s.id}/branding`} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]"><IconMail size={15} /> Email branding</Link>
                 )}
-                {sa.canManage && alerts?.configured && alerts.items[s.id]?.status !== 'active' && (
+                {sa.canManage && alerts?.items[s.id]?.status !== 'active' && (
                   // Plain link: the browser goes to GHL to install the app, then comes back here
                   <a href={'/api/ghl/app/install?subaccount=' + s.id}
                     className="inline-flex h-9 items-center gap-1.5 rounded-full bg-cyan px-4 text-sm font-semibold text-cyan-ink hover:bg-[#7ddcf7]">
-                    <IconBell size={15} /> {alerts.items[s.id] ? 'Reconnect alerts' : 'Enable notifications'}
+                    <IconBell size={15} /> {alerts?.items[s.id] ? 'Reconnect alerts' : 'Enable notifications'}
                   </a>
                 )}
                 {sa.canManage && alerts?.items[s.id]?.status === 'active' && (
@@ -230,7 +230,7 @@ export default function SubaccountsPage() {
                 {sa.canManage && alerts?.items[s.id]?.status !== 'active' && (
                   <button onClick={() => setHookFor(hookFor === s.id ? null : s.id)} aria-expanded={hookFor === s.id}
                     className="inline-flex h-9 items-center gap-1.5 rounded-full bg-card-2 px-4 text-sm hover:bg-[#383a40]">
-                    {alerts?.configured ? 'Set up manually' : <><IconBell size={15} /> Message alerts</>}
+                    Set up manually
                   </button>
                 )}
                 {sa.canManage && (
@@ -242,7 +242,7 @@ export default function SubaccountsPage() {
               </div>
               {hookFor === s.id && sa.canManage && (
                 <div className="mt-4 rounded-2xl bg-ink/60 p-4 text-sm">
-                  <p className="font-medium">{alerts?.configured ? 'Manual setup (instead of the Nova app)' : 'Get notified when a contact messages'}</p>
+                  <p className="font-medium">Manual setup (instead of Enable notifications)</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
                     <li>In this GHL sub-account open <b className="text-fg">Automation › Workflows</b> and create a workflow.</li>
                     <li>Trigger: <b className="text-fg">Customer Replied</b> (any channel).</li>
